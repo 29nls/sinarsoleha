@@ -118,7 +118,7 @@ Setiap file: transaksional, idempotent bila memungkinkan, dan diakhiri revoke ek
 
 ## 4. Rencana Pengujian Database
 
-Dijalankan lokal dengan PGlite (PostgreSQL 18.6): 20/20 lulus. Apply ke project Supabase (branch/preview) dan uji Auth tetap wajib sebelum Phase 2 dinyatakan selesai:
+Dijalankan lokal dengan PGlite (PostgreSQL 18.6): 20/20 lulus. Preview hosted juga tervalidasi 20/20 (Auth/RLS/RPC) pada 2 November 2026; pengujian checkout/opname menunggu Fase 4/5. Produksi belum diterapkan:
 
 1. **RLS allow/deny** per peran untuk SELECT/INSERT/UPDATE/DELETE pada setiap tabel terekspos.
 2. **Profil nonaktif** ditolak semua operasi.

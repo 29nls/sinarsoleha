@@ -11,7 +11,7 @@
 - Tipe database hasil `supabase gen types`; auth store memakai tipe generated dan validasi role.
 - Uji database lokal dengan PGlite PostgreSQL 18.6 dan auth shim Supabase.
 
-**Status: PARTIALLY COMPLETED.** Belum diterapkan ke project Supabase hosted dan login/PostgREST/GoTrue belum diuji. `complete_sale`, `void_sale`, `post_stock_opname`, dan `adjust_stock` baru berupa kontrak.
+**Status: COMPLETED (hosted preview tervalidasi 2 November 2026).** Schema 22 tabel/23 policy diverifikasi pada project preview `ptbllrugrjepdhhdkzxn`; Auth, PostgREST, RLS, RPC katalog/admin, dan locking nomor nota diuji. Produksi belum diterapkan. `complete_sale`, `void_sale`, `post_stock_opname`, dan `adjust_stock` tetap kontrak untuk Fase 4/5.
 
 ### File dibuat
 
@@ -71,4 +71,37 @@ Cakupan uji DB: anon ditolak; user tanpa profil/nonaktif ditolak; kasir tidak da
 
 1. Apply migrasi ke project preview/disposable, lalu uji login owner/kasir/gudang, provisioning, RLS allow/deny, dan RPC katalog.
 2. Regenerasi tipe dari project hosted dan ulangi typecheck/build.
+3. Phase 3 — katalog dan impor; Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.
+
+## 2 November 2026 — Phase 2B (hosted validation)
+
+### Hasil
+
+- Project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11) dikonfirmasi sebagai target disposable sebelum operasi tulis.
+- Schema hosted sudah berisi 22 tabel/223 kolom, 23 policy, 17 trigger, dan 23 signature fungsi; hash tabel/kolom, policy, trigger, dan fungsi identik dengan 11 migrasi lokal.
+- `supabase_migrations.schema_migrations` belum ada karena schema diterapkan lewat SQL Editor. Riwayat dibuat dengan format CLI dan diisi 11 versi; `list_migrations` kini konsisten.
+- Empat akun uji preview (owner, kasir, gudang, nonaktif) dibuat secara administratif lewat `auth.users`/`auth.identities` karena signup publik kena validasi domain dan rate limit email. Trigger provisioning tetap berjalan dan menghasilkan kasir nonaktif.
+- `private.bootstrap_owner` mengaktifkan owner pertama; metadata `role: owner` pada kasir tidak menaikkan privilege.
+- `scripts/hosted-smoke.mjs` dijalankan: **20 passed, 0 failed, 1 skipped** (expired token belum diuji).
+- Concurrency: 4 request PostgREST paralel memakai wrapper sementara memperoleh nomor unik `SS-20991231-0017`–`0020` dengan waktu 1,3 / 2,3 / 3,3 / 4,3 detik; wrapper dan counter uji dihapus.
+- `generate_typescript_types` hosted berhasil; schema identik dengan tipe yang ada.
+- `npm run test:db` 20/20, `npm test` 8/8, `npm run typecheck` exit 0, `npm run build` exit 0, tidak ada `service_role` di `.output`.
+
+### File dibuat/dimodifikasi
+
+- Dibuat: `scripts/hosted-smoke.mjs`.
+- Dimodifikasi: `package.json` (`test:hosted`), `README.md`, `docs/03-database-implementation.md`, `docs/00-phase-0-audit.md`, `docs/02-database-review.md`, `supabase/tests/README.md`, `docs/PROGRESS.md`.
+
+### Batasan dan prasyarat produksi
+
+- Sign-up hosted masih aktif (`disable_signup: false`); wajib dimatikan di Dashboard sebelum produksi.
+- Akun dan data uji masih berada di preview; hapus/reset sebelum produksi. Password hanya di `.tmp/phase2b-accounts.json` (gitignored) dan tidak pernah dicetak.
+- Expired access token dan login UI browser belum diuji; Auth/PostgREST diuji lewat SDK/HTTP nyata.
+- `public.rls_auto_enable()` adalah fungsi event trigger platform, bukan bagian migrasi; tinjau advisor sebelum produksi.
+- `db push` ke produksi belum dijalankan dan memerlukan persetujuan owner, backup, serta CLI yang terautentikasi.
+
+### Tugas berikutnya
+
+1. Matikan sign-up hosted, hapus akun/data uji, dan review advisor keamanan.
+2. Siapkan alur `db push` produksi dengan backup dan persetujuan owner.
 3. Phase 3 — katalog dan impor; Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.

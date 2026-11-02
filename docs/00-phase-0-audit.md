@@ -72,7 +72,7 @@ Kesimpulan: PRD akurat terhadap workbook. PRD dapat dijadikan baseline requireme
 | Database lokal | **Tidak tersedia**: `docker`, `psql`, dan `supabase` CLI tidak terpasang |
 | Kesimpulan | Greenfield. Fondasi harus dibuat dari nol |
 
-**Konsekuensi tooling.** Tanpa Docker/Postgres lokal, migrasi Phase 2 tidak dapat dieksekusi atau diuji di mesin ini. Pada Phase 2 migrasi akhirnya diuji dengan PGlite (PostgreSQL 18.6); apply ke project Supabase (branch/preview) dan uji Auth tetap menjadi blocker sign-off Phase 2.
+**Konsekuensi tooling.** Tanpa Docker/Postgres lokal, migrasi Phase 2 tidak dapat dieksekusi atau diuji di mesin ini. Pada Phase 2 migrasi diuji dengan PGlite (PostgreSQL 18.6), lalu schema diverifikasi dan Auth/RLS/RPC diuji pada project preview hosted (PostgreSQL 17.11) pada 2 November 2026. Produksi belum diterapkan.
 
 ---
 
@@ -174,7 +174,7 @@ Struktur mengikuti konvensi Nuxt 4 (`app/` sebagai srcDir). Folder `server/api` 
 | --- | --- | --- | --- |
 | 0 | Audit, keputusan arsitektur, risk register | Dokumen audit disetujui; data source terverifikasi | **Selesai** |
 | 1 | Nuxt + TS + Tailwind + Pinia + Supabase; layout, nav, auth store, error handling | Build & typecheck lulus; login route terlindungi; tanpa secret di bundle | **Selesai** (verifikasi build di `docs/PROGRESS.md`) |
-| 2 | Migrasi SQL, RLS, RPC inti, provisioning profil | Migrasi apply bersih; allow/deny per peran lulus; `complete_sale` atomik | **Sebagian** — 11 migrasi apply bersih dan 20/20 uji lokal (PGlite); `complete_sale` masih kontrak; apply hosted & uji Auth belum |
+| 2 | Migrasi SQL, RLS, RPC inti, provisioning profil | Migrasi apply bersih; allow/deny per peran lulus; `complete_sale` atomik | **Selesai (preview hosted tervalidasi)** — 11 migrasi, 20/20 lokal + 20/20 hosted, Auth/RLS/RPC/locking; `complete_sale` tetap Fase 4; produksi belum |
 | 3 | Katalog & produk | CRUD + impor tervalidasi; tanpa gambar; SKU case-insensitive unik | Belum |
 | 4 | Kasir | Checkout konkuren aman; payment = total; idempotency terbukti | Belum |
 | 5 | Inventaris & opname | `stock_version` basi ditolak; alasan wajib; posting atomik | Belum |

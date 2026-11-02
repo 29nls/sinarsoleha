@@ -10,6 +10,7 @@
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:db": "node scripts/db-test.mjs",
+    "test:hosted": "node scripts/hosted-smoke.mjs",
     "gen:types": "node scripts/gen-types.mjs"
   },
   "dependencies": {

@@ -8,10 +8,10 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | --- | --- | --- |
 | 0 | Audit dokumen, database, arsitektur | Selesai — lihat `docs/00-phase-0-audit.md` |
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
-| 2 | Migrasi database, RLS, RPC katalog | **Sebagian** — 11 migrasi + 20 uji DB lokal lulus; belum diterapkan ke Supabase hosted |
+| 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
 | 3–8 | Katalog, kasir, inventaris, laporan, plugin, UAT | Belum |
 
-Modul bisnis belum diimplementasikan. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan langkah apply hosted ada di `docs/03-database-implementation.md`.
+Modul bisnis belum diimplementasikan. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2, hasil hosted, dan prasyarat produksi ada di `docs/03-database-implementation.md`.
 
 ## Menjalankan
 
@@ -32,6 +32,7 @@ Tanpa kredensial Supabase, aplikasi tetap berjalan tetapi halaman login menampil
 | `npm run typecheck` | Type check (`vue-tsc`) |
 | `npm test` | Unit test (Vitest) |
 | `npm run test:db` | Uji migrasi, RLS, dan RPC di PostgreSQL lokal (PGlite) |
+| `npm run test:hosted` | Uji Auth/RLS/RPC ke project preview (butuh akun uji lokal) |
 | `npm run gen:types` | Regenerasi `types/database.generated.ts` dari schema |
 
 ## Struktur

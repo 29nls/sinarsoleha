@@ -16,6 +16,16 @@ Harness `scripts/db-test.mjs` akan:
 
 Hasil terakhir: **20 passed, 0 failed**.
 
+## Hosted smoke test
+
+```bash
+npm run test:hosted
+```
+
+`scripts/hosted-smoke.mjs` menguji project preview memakai publishable key dan sesi user nyata (tanpa `service_role`): login owner, provisioning, aktivasi lewat RPC, RLS kasir/gudang/nonaktif, RPC katalog, audit, refresh/restore/logout. Hasil 2 November 2026: **20 passed, 0 failed, 1 skipped** (expired token belum diuji).
+
+Skrip membutuhkan `.env` dan `.tmp/phase2b-accounts.json` berisi akun uji preview; file akun gitignored dan tidak boleh dipakai di produksi. Skrip membuat satu kategori dan satu produk uji.
+
 ## Cakupan
 
 - anon tidak punya akses tabel maupun RPC.
@@ -31,14 +41,14 @@ Hasil terakhir: **20 passed, 0 failed**.
 
 ## Batasan
 
-PGlite bukan Supabase hosted. Yang **tidak** diuji di sini:
+PGlite bukan Supabase hosted. Uji lokal **tidak** mencakup:
 
 - PostgREST, GoTrue, JWT asli, dan alur login browser.
 - Konkurensi multi-sesi (PGlite satu koneksi); row lock `document_counters` baru terbukti secara logika.
 - Realtime Broadcast hosted.
 - Apply migrasi ke project Supabase.
 
-Untuk verifikasi hosted, gunakan project preview/disposable:
+Untuk project preview baru, gunakan project disposable:
 
 ```bash
 npx supabase link --project-ref <preview-ref>
@@ -46,4 +56,4 @@ npx supabase db push
 npm run gen:types   # atau: npx supabase gen types typescript --linked > types/database.generated.ts
 ```
 
-Lalu ulangi skenario RLS dengan akun owner, kasir, staf gudang, dan akun nonaktif. Jangan menjalankan `db push` ke produksi tanpa persetujuan dan backup.
+Lalu ulangi skenario RLS dengan akun owner, kasir, staf gudang, dan akun nonaktif. Jangan menjalankan `db push` ke produksi tanpa persetujuan dan backup. Pada Phase 2B, schema preview diverifikasi dan riwayat migrasi direpair setelah hash schema cocok; `db push` tidak dijalankan karena CLI tidak terautentikasi. Detail di `docs/03-database-implementation.md`.

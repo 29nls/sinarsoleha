@@ -1,11 +1,11 @@
 # Implementasi Database — Fase 2
 
-**Status: PARTIALLY COMPLETED.**
-Migrasi, RLS, RPC katalog, provisioning profil, dan audit telah diimplementasikan dan dieksekusi terhadap PostgreSQL 18.6 lokal (PGlite). **Belum diterapkan ke project Supabase hosted**, dan login/PostgREST/GoTrue belum diuji terhadap backend nyata. Kriteria keluar Fase 2 mensyaratkan apply ke database disposable/preview dan uji Auth; karena itu fase ini tidak dilaporkan sebagai selesai penuh.
+**Status: COMPLETED untuk preview hosted (2 November 2026).**
+Seluruh 11 migrasi telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
-Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQL di `supabase/supabase_schema_pos_toko_sinar_soleha.sql` tetap menjadi referensi dan **tidak** diterapkan apa adanya.
+Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQL di `supabase/supabase_schema_pos_toko_sinar_soleha.sql` tetap referensi dan **tidak** diterapkan apa adanya.
 
 | File | Isi |
 | --- | --- |
@@ -20,6 +20,21 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261102090800_rls_policies.sql` | RLS 22 tabel, grant least privilege, 23 policy |
 | `20261102090900_rpc_catalog.sql` | `upsert_product`, `set_product_cost` |
 | `20261102091000_rpc_admin.sql` | aktivasi/role user, bootstrap owner, feature flag RPC |
+
+### Bukti schema hosted
+
+Schema sudah ada di preview sebelum Phase 2B karena diterapkan lewat SQL Editor, sehingga `supabase_migrations.schema_migrations` belum ada. Setelah schema dibandingkan dengan hasil 11 migrasi lokal:
+
+| Objek | Hasil |
+| --- | --- |
+| Tabel / kolom | 22 tabel, 223 kolom; hash tabel+kolom identik |
+| Policy | 23; hash policy identik |
+| Trigger | 17 trigger publik; hash identik |
+| Fungsi | 23 signature (`19 private` + `4 public`); hash identik |
+| Constraint | 158 (79 CHECK, 40 FK, 22 PK, 15 UNIQUE, 2 constraint trigger); selisih hitungan lokal murni karena PostgreSQL 18 mencatat 139 NOT NULL sebagai constraint |
+| Index | 59; nama dan jumlah sama |
+
+Riwayat migrasi kemudian dibuat dengan format resmi CLI (`version`, `statements`, `name`) dan diisi 11 versi. `list_migrations` menampilkan 11 entri yang konsisten. Perbaikan ini **tidak** menjalankan ulang SQL; schema sudah identik dan telah diverifikasi sebelum repair. `db push` tidak dijalankan karena CLI tidak memiliki access token/DB password pada sesi ini.
 
 ## 2. Objek Database
 
@@ -40,13 +55,13 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 - SKU memakai `sku_normalized = upper(btrim(sku))` yang unik; spasi di tepi ditolak.
 - Nomor nota `SS-YYYYMMDD-NNNN` berasal dari `document_counters` dengan row lock.
 - Default privileges mencabut akses `anon`/`authenticated` untuk tabel, sequence, dan function baru.
-- `service_role` tidak pernah dipetakan ke `runtimeConfig.public` dan tidak ada di source aplikasi.
+- `service_role` tidak pernah dipetakan ke `runtimeConfig.public` dan tidak ada di source/bundle.
 
 ## 3. Provisioning dan Bootstrap Owner
 
-1. Public sign-up dimatikan: `supabase/config.toml` → `[auth] enable_signup = false` dan `[auth.email] enable_signup = false`. Di project hosted, pastikan juga **Authentication → Providers → Email → Enable sign-ups = OFF**; config lokal tidak mengubah project hosted.
-2. Owner membuat user lewat Dashboard/Auth Admin API. Trigger `on_auth_user_created` membuat profil `cashier` dengan `is_active = false` dan `full_name` dari metadata/email. Metadata tidak pernah menentukan role.
-3. Owner pertama dipilih sekali lewat SQL editor (bukan route aplikasi):
+1. Public sign-up **belum dimatikan di hosted**: `/auth/v1/settings` melaporkan `disable_signup: false`, `mailer_autoconfirm: false`. `supabase/config.toml` hanya berlaku untuk stack lokal. Sebelum produksi, matikan **Authentication → Providers → Email → Enable sign-ups**.
+2. Trigger `on_auth_user_created` membuat profil `cashier` dengan `is_active = false`; `full_name` disalin dari metadata/email. Metadata tidak pernah menentukan role.
+3. Owner pertama dipilih sekali lewat SQL:
 
 ```sql
 select private.bootstrap_owner('<auth-user-uuid>');
@@ -61,22 +76,50 @@ select public.admin_upsert_profile('<uuid>', 'Nama Lengkap', 'cashier', true);
 
 Fungsi menolak menonaktifkan/menurunkan owner aktif terakhir. Offboarding = `is_active = false`; jangan menghapus `auth.users` karena FK transaksi bersifat restrict (DB-17).
 
+### Akun uji Phase 2B
+
+Percobaan signup publik gagal sebelum membuat user: domain `example.com` ditolak (`email_address_invalid`) dan permintaan berikutnya terkena `over_email_send_rate_limit`. Empat akun uji preview kemudian dibuat secara administratif melalui `auth.users` + `auth.identities` dengan bcrypt hash; trigger provisioning tetap diuji dan berjalan. Akun: owner, kasir, staf gudang (`inventory_staff`), dan nonaktif. Password hanya berada di `.tmp/phase2b-accounts.json` yang gitignored dan tidak pernah dicetak. Akun/tes data ini harus dihapus atau project preview di-reset sebelum produksi.
+
 ## 4. Pengujian yang Dieksekusi
 
+### Lokal
+
 Perintah: `npm run test:db` — PGlite PostgreSQL 18.6, in-process, tanpa Docker.
+Hasil terakhir: **20/20 lulus**, setelah 11 migrasi diterapkan bersih.
 
-Hasil terakhir: **20/20 lulus** (exit 0), setelah 11 migrasi diterapkan bersih.
+Cakupan: anon ditolak; user tanpa profil/nonaktif ditolak; kasir tidak dapat menulis produk/stok; gudang tidak dapat menaikkan role; owner mengelola produk via RPC tanpa mengubah stok; `user_metadata` tidak menaikkan privilege; aritmetika ledger; pembayaran harus balance saat COMMIT; SKU case/space; opname posted immutable; nomor dokumen berurutan; provisioning; bootstrap owner; aktivasi + last-owner; feature flag; biaya owner-only; default privilege; audit append-only.
 
-Cakupan: anon ditolak; user tanpa profil ditolak; akun nonaktif ditolak tetapi dapat membaca profilnya sendiri; kasir tidak dapat membuat/mengubah produk atau stok; staf gudang tidak dapat menaikkan role; owner mengelola produk lewat RPC tanpa mengubah stok; `user_metadata` tidak menaikkan privilege; aritmetika ledger; pembayaran tidak balance ditolak saat COMMIT; SKU case/space; opname posted tidak dapat diubah; nomor dokumen berurutan; provisioning; bootstrap owner; aktivasi user + last-owner guard; feature flag; biaya hanya owner; default privilege; audit append-only.
+### Hosted preview
 
-File: `scripts/db-test.mjs`, `supabase/tests/local_bootstrap.sql`, `supabase/tests/README.md`.
+Perintah: `npm run test:hosted` — Supabase JS dengan publishable key dan sesi user nyata; tanpa `service_role`.
+Hasil: **20 passed, 0 failed, 1 skipped**.
 
-### Yang belum diuji
+| Area | Bukti |
+| --- | --- |
+| Anon | SELECT produk dan RPC katalog ditolak |
+| Login owner | Sesi GoTrue nyata; profil owner aktif |
+| Provisioning | Empat user membuat profil `cashier` nonaktif; metadata `role: owner` pada kasir tidak mengubah role |
+| Bootstrap | `private.bootstrap_owner` mengaktifkan owner pertama |
+| Aktivasi | Owner mengaktifkan kasir dan `inventory_staff` lewat `admin_upsert_profile` |
+| Last owner | Owner terakhir tidak dapat dinonaktifkan |
+| Katalog RPC | Create/update produk, biaya, feature flag berhasil; `stock_on_hand`/`stock_version` tidak berubah dari payload |
+| Validasi RPC | SKU kosong, unit/kategori tidak valid, dan nama kosong ditolak |
+| Audit | `product.create` dan `product.update` tercatat |
+| Kasir | Baca produk; biaya kosong; INSERT/UPDATE produk dan stok ditolak; RPC owner ditolak meski metadata berisi `owner` |
+| Gudang | Baca produk; biaya kosong; update role sendiri ditolak; RPC owner ditolak |
+| Nonaktif | Login Auth berhasil; profil sendiri terbaca; produk/biaya kosong; RPC ditolak |
+| Auth | Password salah ditolak; refresh session, restore session, dan logout diuji |
+| Expiry | **Tidak dieksekusi**; memerlukan penantian TTL atau token terkontrol |
+| Concurrency | 4 request PostgREST paralel memakai wrapper sementara: nomor unik `SS-20991231-0017`–`0020`, waktu 1,3 / 2,3 / 3,3 / 4,3 detik; wrapper dan counter uji dihapus |
+| Tipe | `generate_typescript_types` hosted berhasil; schema hosted identik dengan tipe yang ada |
 
-- PostgREST, GoTrue, JWT nyata, dan alur login end-to-end (butuh project Supabase).
-- Uji multi-sesi/konkurensi nyata (PGlite satu koneksi); row lock `document_counters` belum diuji paralel.
-- Realtime Broadcast hosted (DB-16).
-- Apply migrasi ke project hosted/preview.
+### Build dan pemeriksaan lain
+
+- `npm run typecheck` — exit 0
+- `npm test` — 2 file, 8/8 lulus
+- `npm run build` — exit 0
+- `grep -rl "service_role" .output` — tidak ada hasil
+- `git diff --check` — exit 0
 
 ## 5. Status Temuan DB-01…DB-17
 
@@ -84,36 +127,43 @@ File: `scripts/db-test.mjs`, `supabase/tests/local_bootstrap.sql`, `supabase/tes
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Parsial (sesuai lingkup) | kontrak `complete_sale`, `void_sale`, `post_stock_opname`, `adjust_stock` di `docs/04-rpc-contracts.md`; implementasi di Fase 4/5 |
-| DB-04 | Selesai | trigger `updated_at` pada tabel yang memilikinya |
-| DB-05 | Selesai | constraint trigger deferred pada `payments` dan `transactions` |
-| DB-06 | Selesai | CHECK aritmetika + aturan referensi per `movement_type` |
+| DB-03 | Parsial (sesuai lingkup) | kontrak `complete_sale`, `void_sale`, `post_stock_opname`, `adjust_stock` di `docs/04-rpc-contracts.md`; implementasi Fase 4/5 |
+| DB-04 | Selesai | trigger `updated_at` |
+| DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
+| DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |
 | DB-07 | Selesai | `sku_normalized` unik + CHECK tanpa spasi tepi |
-| DB-08 | Selesai | `product_data_issues` multi-baris per produk |
-| DB-09 | Selesai (schema) | `legacy_import_runs`, header/item mentah, confidence, match status; pipeline impor belum |
-| DB-10 | Selesai | `document_counters` + `next_document_number` dengan row lock |
-| DB-11 | Sebagian | `count_status`, transisi status, immutability posted/cancelled; riwayat hitung per item belum berupa tabel tersendiri |
-| DB-12 | Selesai | CHECK 8 nilai reason code di opname, discrepancy, movement |
+| DB-08 | Selesai | `product_data_issues` multi-baris |
+| DB-09 | Selesai (schema) | staging legacy; pipeline impor belum |
+| DB-10 | Selesai | `document_counters` + row lock; diuji lewat 4 request paralel |
+| DB-11 | Sebagian | status/immutability ada; riwayat hitung per item belum tabel tersendiri |
+| DB-12 | Selesai | CHECK 8 reason code |
 | DB-13 | Selesai | `alter default privileges` + revoke eksplisit |
-| DB-14 | Selesai | indeks entity, created_at, actor |
+| DB-14 | Selesai | indeks entity/created_at/actor |
 | DB-15 | Selesai | `stock_movements.actor_id NOT NULL` |
-| DB-16 | Ditunda | Realtime Broadcast memerlukan project hosted dan mutasi stok Fase 5; kontrak payload ada di ADR-009 |
-| DB-17 | Terdokumentasi | offboarding lewat `is_active = false`; tidak ada tombol hapus user |
+| DB-16 | Ditunda | Realtime Broadcast menunggu mutasi stok Fase 5 |
+| DB-17 | Terdokumentasi | offboarding via `is_active = false` |
 
-## 6. Langkah Apply ke Hosted (Belum Dieksekusi)
+## 6. Apply ke Hosted
 
-Gunakan project **disposable/preview**, bukan produksi:
+Schema preview sudah tervalidasi; **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
 
 ```bash
-npx supabase link --project-ref <preview-ref>
+npx supabase link --project-ref <production-ref>
+npx supabase migration list --linked
+npx supabase db push --dry-run
 npx supabase db push
 npx supabase gen types typescript --linked > types/database.generated.ts
 ```
 
-Setelah apply: uji login owner/kasir/gudang, RLS allow/deny, provisioning user baru, RPC katalog, dan constraint pembayaran. Jangan menjalankan `db push` ke produksi tanpa persetujuan owner dan backup.
+Jangan menjalankan `db push` ke produksi tanpa persetujuan owner. CLI sesi ini tidak terautentikasi; repair riwayat preview dilakukan setelah verifikasi hash schema, bukan dengan mengulang SQL.
 
-## 7. Batasan Teknis
+## 7. Batasan dan Prasyarat Produksi
 
-- Tipe hasil generate menampilkan `profiles.role` sebagai `string`; aplikasi mempersempitnya dengan `isRole()` di store, bukan cast buta.
-- `types/database.generated.ts` dihasilkan dari schema lokal; regenerasi setelah setiap migrasi.
-- PGlite adalah PostgreSQL asli, tetapi bukan Supabase: perbedaan perilaku PostgREST/GoTrue/Realtime tetap harus diuji di project hosted.
+- **Expired access token** belum diuji; refresh, restore, invalid credentials, dan logout sudah.
+- **UI browser** belum diuji login end-to-end; Auth/PostgREST diuji lewat SDK dan HTTP nyata.
+- **Sign-up hosted masih aktif**; wajib dimatikan sebelum produksi.
+- **Akun dan data uji** masih ada di preview; hapus/reset sebelum produksi.
+- `public.rls_auto_enable()` adalah fungsi event trigger platform yang dilaporkan advisor; bukan bagian migrasi ini. Tinjau sebelum produksi.
+- Fungsi `private` masih mewarisi EXECUTE dari `PUBLIC`; schema `private` tidak diekspos PostgREST, tetapi hardening grant dapat menjadi migrasi lanjutan.
+- `types/database.generated.ts` dihasilkan dari schema lokal; hasil generation hosted identik pada tingkat schema. Regenerasi file dari CLI hosted setelah akses CLI tersedia.
+- PGlite bukan Supabase; perbedaan perilaku PostgREST/GoTrue/Realtime tetap harus diuji pada project hosted (sudah dilakukan untuk Auth/RLS/RPC, bukan Realtime).
