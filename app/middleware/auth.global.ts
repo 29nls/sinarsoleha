@@ -19,6 +19,11 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (isLoginRoute) return navigateTo('/dashboard')
 
+  if (auth.expiresAt !== null && auth.expiresAt * 1000 <= Date.now()) {
+    await auth.signOut()
+    return navigateTo({ path: '/login', query: { reason: 'expired' } })
+  }
+
   if (to.meta.capability && !can(auth.role, to.meta.capability)) {
     return abortNavigation(
       createError({

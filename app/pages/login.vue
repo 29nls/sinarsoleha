@@ -54,6 +54,10 @@ async function submit() {
         </p>
       </div>
 
+      <div class="notice notice-warn" v-if="route.query.reason === 'expired'" role="status">
+        Sesi berakhir. Masuk kembali untuk melanjutkan.
+      </div>
+
       <div class="notice notice-error" v-if="auth.errorMessage" role="alert">
         {{ auth.errorMessage }}
       </div>

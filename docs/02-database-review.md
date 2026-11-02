@@ -99,6 +99,8 @@ Nilai bebas pada opname dan discrepancy; typo akan lolos.
 
 ## 3. Rencana Migrasi (Phase 2)
 
+> **Realisasi:** Fase 2 memakai 11 migrasi timestamp di `supabase/migrations/`; RPC penjualan/opname ditunda ke Fase 4/5 dengan kontrak di `docs/04-rpc-contracts.md`. Detail di `docs/03-database-implementation.md`.
+
 Urutan yang menghindari dependensi mundur:
 
 1. `0001_extensions_and_helpers.sql` — schema `private`, `set_updated_at`, `has_role`, revoke default privileges.
@@ -116,7 +118,7 @@ Setiap file: transaksional, idempotent bila memungkinkan, dan diakhiri revoke ek
 
 ## 4. Rencana Pengujian Database
 
-Belum dapat dijalankan di mesin ini (tidak ada Docker/psql/supabase CLI). Wajib dijalankan pada project Supabase sebelum Phase 2 dinyatakan selesai:
+Dijalankan lokal dengan PGlite (PostgreSQL 18.6): 20/20 lulus. Apply ke project Supabase (branch/preview) dan uji Auth tetap wajib sebelum Phase 2 dinyatakan selesai:
 
 1. **RLS allow/deny** per peran untuk SELECT/INSERT/UPDATE/DELETE pada setiap tabel terekspos.
 2. **Profil nonaktif** ditolak semua operasi.

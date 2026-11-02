@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { Session } from '@supabase/supabase-js'
-import type { ProfileRow, Role } from '~/types/database'
+import { isRole, type ProfileRow, type Role } from '~/types/database'
 import { can, type Capability } from '~/utils/permissions'
 
 export type AuthStatus =
@@ -51,25 +51,32 @@ export const useAuthStore = defineStore('auth', () => {
     const supabase = useSupabaseClient()
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, role, is_active, created_at, updated_at')
+      .select('*')
       .eq('id', userId)
       .maybeSingle()
 
     if (error) throw new Error(`Gagal memuat profil: ${error.message}`)
 
-    // Cast until Phase 2 replaces the hand-written Database type with
-    // `supabase gen types` output; the selected columns match ProfileRow.
-    const profileRow = data as ProfileRow | null
-    if (!profileRow) {
+    if (!data) {
       throw new Error('Profil pengguna tidak ditemukan. Minta owner membuat profil untuk akun ini.')
     }
-    if (!profileRow.is_active) {
+    if (!isRole(data.role)) {
+      throw new Error('Peran profil tidak dikenali. Hubungi owner.')
+    }
+    if (!data.is_active) {
       throw new Error('Akun ini dinonaktifkan. Hubungi owner.')
     }
-    profile.value = profileRow
+    profile.value = { ...data, role: data.role }
   }
 
   async function applySession(nextSession: Session | null): Promise<void> {
+    if (nextSession?.expires_at && nextSession.expires_at * 1000 <= Date.now()) {
+      session.value = null
+      profile.value = null
+      status.value = 'anonymous'
+      errorMessage.value = 'Sesi berakhir. Masuk kembali.'
+      return
+    }
     session.value = nextSession
     if (!nextSession) {
       profile.value = null
