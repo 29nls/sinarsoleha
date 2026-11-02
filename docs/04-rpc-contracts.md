@@ -75,3 +75,24 @@ Urutan:
 - Ledger immutable dan aturan referensi movement.
 - Audit writer: `private.write_audit(...)`.
 - Staging legacy dan `product_data_issues` untuk katalog.
+
+## 5. `public.upsert_category(p_payload jsonb) returns jsonb` (Phase 3A, sudah tersedia)
+
+Payload create:
+
+```json
+{ "name": "Furnitur", "is_active": true }
+```
+
+Payload rename/deactivate:
+
+```json
+{ "category_id": 12, "name": "Furnitur Kayu", "is_active": false }
+```
+
+- Hanya owner aktif; `private.require_active_role(['owner'])`.
+- Nama di-trim, wajib 1..120 karakter; nama dinormalisasi oleh generated column dan duplikat mengabaikan huruf besar/kecil ditolak `23505`.
+- `is_active` default `true`; kategori tidak pernah di-hard-delete.
+- Menulis `category.create` atau `category.update` ke `audit_logs`.
+- Mengembalikan baris kategori sebagai JSON.
+- Wrapper `public` hanya memberi `EXECUTE` ke `authenticated`; pemeriksaan owner tetap di fungsi `private`.

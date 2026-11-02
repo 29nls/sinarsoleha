@@ -99,7 +99,7 @@ Nilai bebas pada opname dan discrepancy; typo akan lolos.
 
 ## 3. Rencana Migrasi (Phase 2)
 
-> **Realisasi:** Fase 2 memakai 11 migrasi timestamp di `supabase/migrations/`; RPC penjualan/opname ditunda ke Fase 4/5 dengan kontrak di `docs/04-rpc-contracts.md`. Detail di `docs/03-database-implementation.md`.
+> **Realisasi:** Fase 2 memakai 11 migrasi timestamp, dan Phase 3A menambahkan 1 migrasi RPC kategori (12 total) di `supabase/migrations/`; RPC penjualan/opname ditunda ke Fase 4/5 dengan kontrak di `docs/04-rpc-contracts.md`. Detail di `docs/03-database-implementation.md`.
 
 Urutan yang menghindari dependensi mundur:
 
@@ -118,7 +118,7 @@ Setiap file: transaksional, idempotent bila memungkinkan, dan diakhiri revoke ek
 
 ## 4. Rencana Pengujian Database
 
-Dijalankan lokal dengan PGlite (PostgreSQL 18.6): 20/20 lulus. Preview hosted juga tervalidasi 20/20 (Auth/RLS/RPC) pada 2 November 2026; pengujian checkout/opname menunggu Fase 4/5. Produksi belum diterapkan:
+Dijalankan lokal dengan PGlite (PostgreSQL 18.6): 22/22 lulus setelah migrasi kategori. Preview hosted juga tervalidasi 22/22 (Auth/RLS/RPC/katalog) pada 2 November 2026; pengujian checkout/opname menunggu Fase 4/5. Produksi belum diterapkan:
 
 1. **RLS allow/deny** per peran untuk SELECT/INSERT/UPDATE/DELETE pada setiap tabel terekspos.
 2. **Profil nonaktif** ditolak semua operasi.

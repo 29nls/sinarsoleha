@@ -150,13 +150,52 @@ await test('owner cannot deactivate the last active owner', async () => {
   assert(Boolean(error), 'last owner deactivation succeeded')
 })
 
-const category = await owner
-  .from('categories')
-  .insert({ name: `Phase 2B ${stamp}` })
-  .select('id')
-  .single()
-if (category.error) throw new Error(`category setup failed: ${category.error.message}`)
-const categoryId = category.data.id
+let categoryId
+
+await test('owner creates a category through RPC and duplicate names are rejected', async () => {
+  const category = await owner.rpc('upsert_category', {
+    p_payload: { name: `Phase 2B ${stamp}` },
+  })
+  assert(!category.error, category.error?.message ?? 'category create failed')
+  const row = typeof category.data === 'string' ? JSON.parse(category.data) : category.data
+  assert(row.name === `Phase 2B ${stamp}`, 'category name is wrong')
+  assert(row.is_active === true, 'new category is not active')
+  categoryId = row.id
+
+  const duplicate = await expectError(
+    'duplicate category',
+    owner.rpc('upsert_category', { p_payload: { name: `  phase 2b ${stamp}  ` } }),
+  )
+  assert(
+    duplicate.message.includes('CATEGORY_ALREADY_EXISTS'),
+    `unexpected duplicate error: ${duplicate.message}`,
+  )
+
+  const renamed = await owner.rpc('upsert_category', {
+    p_payload: { category_id: categoryId, name: `Phase 2B ${stamp} Edit`, is_active: true },
+  })
+  assert(!renamed.error, renamed.error?.message ?? 'category rename failed')
+  const renamedRow = typeof renamed.data === 'string' ? JSON.parse(renamed.data) : renamed.data
+  assert(renamedRow.name.endsWith(' Edit'), 'category rename was not stored')
+
+  const paused = await owner.rpc('upsert_category', {
+    p_payload: { category_id: categoryId, name: `Phase 2B ${stamp} Edit`, is_active: false },
+  })
+  assert(!paused.error, paused.error?.message ?? 'category deactivate failed')
+  const pausedRow = typeof paused.data === 'string' ? JSON.parse(paused.data) : paused.data
+  assert(pausedRow.is_active === false, 'category was not deactivated')
+
+  const resumed = await owner.rpc('upsert_category', {
+    p_payload: { category_id: categoryId, name: `Phase 2B ${stamp} Edit`, is_active: true },
+  })
+  assert(!resumed.error, resumed.error?.message ?? 'category activate failed')
+
+  const audit = await expectRows(
+    'category audit read',
+    owner.from('audit_logs').select('action_key, entity_id').eq('entity_id', String(categoryId)),
+  )
+  assert(audit.some((item) => item.action_key === 'category.create'), 'category.create audit missing')
+})
 
 const unit = await owner.from('units_of_measure').select('id, code').eq('code', 'PCS').single()
 if (unit.error) throw new Error(`unit lookup failed: ${unit.error.message}`)
@@ -213,6 +252,23 @@ await test('owner updates a product through RPC without changing stock', async (
   assert(Number(stored.data.stock_version) === 0, 'stored stock_version changed')
 })
 
+await test('catalog page query joins category and unit and exact SKU search works', async () => {
+  const { data, error } = await owner
+    .from('products')
+    .select(
+      'id, sku, name, category_id, unit_id, sale_price, stock_on_hand, low_stock_threshold, is_active, import_review_status, categories(name), units_of_measure(label, code)',
+    )
+    .or(
+      `sku_normalized.eq."${sku}",sku_normalized.like."${sku}%",normalized_name.ilike."%${sku.toLowerCase()}%"`,
+    )
+    .limit(50)
+  assert(!error, error?.message ?? 'catalog page query failed')
+  const row = data?.find((item) => item.sku === sku)
+  assert(Boolean(row), 'exact SKU search did not return the product')
+  assert(row.categories?.name?.startsWith(`Phase 2B ${stamp}`), 'category join is missing')
+  assert(row.units_of_measure?.label === 'Pcs', 'unit join is missing')
+})
+
 await test('owner can set purchase cost and read it', async () => {
   const cost = await owner.rpc('set_product_cost', {
     p_product_id: productId,
@@ -263,6 +319,12 @@ await test('product RPC rejects invalid SKU, unit, category, and missing name', 
     'missing name',
     owner.rpc('upsert_product', {
       p_payload: { sku: `BAD-NAME-${stamp}`, unit_id: unitId },
+    }),
+  )
+  await expectError(
+    'duplicate SKU',
+    owner.rpc('upsert_product', {
+      p_payload: { sku: sku.toLowerCase(), name: 'Duplicate SKU', unit_id: unitId },
     }),
   )
 })
@@ -316,6 +378,10 @@ await test('cashier cannot call owner RPCs even with owner metadata', async () =
     cashier.rpc('set_product_cost', { p_product_id: productId, p_purchase_cost: 1 }),
   )
   await expectError(
+    'cashier category RPC',
+    cashier.rpc('upsert_category', { p_payload: { name: `CASH-CAT-${stamp}` } }),
+  )
+  await expectError(
     'cashier admin RPC',
     cashier.rpc('admin_upsert_profile', {
       p_user_id: byRole.cashier.id,
@@ -367,6 +433,10 @@ await test('warehouse cannot elevate itself or call owner RPCs', async () => {
     warehouse.rpc('upsert_product', {
       p_payload: { sku: `WARE-RPC-${stamp}`, name: 'Warehouse RPC', unit_id: unitId },
     }),
+  )
+  await expectError(
+    'warehouse category RPC',
+    warehouse.rpc('upsert_category', { p_payload: { name: `WARE-CAT-${stamp}` } }),
   )
 })
 

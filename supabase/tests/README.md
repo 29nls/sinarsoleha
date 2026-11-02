@@ -10,11 +10,11 @@ Harness `scripts/db-test.mjs` akan:
 
 1. Membuat cluster PGlite baru (in-memory).
 2. Membuat role `anon`, `authenticated`, `service_role`, schema `auth`, `auth.users`, dan `auth.uid()` (shim Supabase).
-3. Menerapkan seluruh `supabase/migrations/*.sql` berurutan.
+3. Menerapkan seluruh `supabase/migrations/*.sql` berurutan (12 migrasi, termasuk RPC kategori Phase 3A).
 4. Mengisi fixture owner/kasir/gudang/nonaktif/produk.
-5. Menjalankan 20 skenario RLS, RPC, constraint, provisioning, dan audit.
+5. Menjalankan 22 skenario RLS, RPC, constraint, provisioning, dan audit.
 
-Hasil terakhir: **20 passed, 0 failed**.
+Hasil terakhir: **22 passed, 0 failed**.
 
 ## Hosted smoke test
 
@@ -22,7 +22,7 @@ Hasil terakhir: **20 passed, 0 failed**.
 npm run test:hosted
 ```
 
-`scripts/hosted-smoke.mjs` menguji project preview memakai publishable key dan sesi user nyata (tanpa `service_role`): login owner, provisioning, aktivasi lewat RPC, RLS kasir/gudang/nonaktif, RPC katalog, audit, refresh/restore/logout. Hasil 2 November 2026: **20 passed, 0 failed, 1 skipped** (expired token belum diuji).
+`scripts/hosted-smoke.mjs` menguji project preview memakai publishable key dan sesi user nyata (tanpa `service_role`): login owner, provisioning, aktivasi lewat RPC, RLS kasir/gudang/nonaktif, RPC katalog, RPC kategori, query halaman dengan join, audit, refresh/restore/logout. Hasil 2 November 2026: **22 passed, 0 failed, 1 skipped** (expired token belum diuji).
 
 Skrip membutuhkan `.env` dan `.tmp/phase2b-accounts.json` berisi akun uji preview; file akun gitignored dan tidak boleh dipakai di produksi. Skrip membuat satu kategori dan satu produk uji.
 
@@ -38,6 +38,7 @@ Skrip membutuhkan `.env` dan `.tmp/phase2b-accounts.json` berisi akun uji previe
 - Provisioning membuat kasir nonaktif; bootstrap owner hanya sekali.
 - Aktivasi user, last-owner guard, feature flag owner-only.
 - Biaya hanya owner; default privilege tabel baru; audit append-only.
+- Owner membuat/mengubah/menonaktifkan kategori lewat RPC; duplikat nama ditolak; kasir tidak dapat memanggil RPC kategori.
 
 ## Batasan
 

@@ -9,9 +9,10 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 0 | Audit dokumen, database, arsitektur | Selesai — lihat `docs/00-phase-0-audit.md` |
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
-| 3–8 | Katalog, kasir, inventaris, laporan, plugin, UAT | Belum |
+| 3 | Katalog produk (3A), impor massal (3B) | **3A selesai (preview)**; impor 3B belum |
+| 4–8 | Kasir, inventaris, laporan, plugin, UAT | Belum |
 
-Modul bisnis belum diimplementasikan. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2, hasil hosted, dan prasyarat produksi ada di `docs/03-database-implementation.md`.
+Katalog produk sudah aktif. Modul transaksi, inventaris, dan laporan belum diimplementasikan. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan hasil hosted ada di `docs/03-database-implementation.md`; arsitektur katalog ada di `docs/05-product-catalog.md`.
 
 ## Menjalankan
 
@@ -61,4 +62,5 @@ types/          tipe database hasil generate
 - `docs/02-database-review.md` — temuan schema dan rencana migrasi
 - `docs/03-database-implementation.md` — migrasi, RLS, hasil uji, status temuan
 - `docs/04-rpc-contracts.md` — kontrak RPC mutasi Fase 4/5
+- `docs/05-product-catalog.md` — arsitektur, izin, dan batasan katalog Phase 3A
 - `docs/PROGRESS.md` — log pengembangan

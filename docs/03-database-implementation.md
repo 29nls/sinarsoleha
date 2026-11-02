@@ -1,7 +1,7 @@
-# Implementasi Database — Fase 2
+# Implementasi Database
 
-**Status: COMPLETED untuk preview hosted (2 November 2026).**
-Seluruh 11 migrasi telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: Phase 2 COMPLETED untuk preview hosted; Phase 3A katalog selesai untuk preview (2 November 2026).**
+Seluruh 11 migrasi Phase 2 dan 1 migrasi kategori Phase 3A telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -20,28 +20,29 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261102090800_rls_policies.sql` | RLS 22 tabel, grant least privilege, 23 policy |
 | `20261102090900_rpc_catalog.sql` | `upsert_product`, `set_product_cost` |
 | `20261102091000_rpc_admin.sql` | aktivasi/role user, bootstrap owner, feature flag RPC |
+| `20261102091100_rpc_category.sql` | `upsert_category` owner-only, validasi duplikat, audit, tanpa hard delete |
 
 ### Bukti schema hosted
 
-Schema sudah ada di preview sebelum Phase 2B karena diterapkan lewat SQL Editor, sehingga `supabase_migrations.schema_migrations` belum ada. Setelah schema dibandingkan dengan hasil 11 migrasi lokal:
+Schema Phase 2 sudah ada di preview sebelum Phase 2B karena diterapkan lewat SQL Editor, sehingga `supabase_migrations.schema_migrations` belum ada. Setelah schema dibandingkan dengan hasil 11 migrasi lokal, migrasi kategori Phase 3A ditambahkan dan diuji:
 
 | Objek | Hasil |
 | --- | --- |
 | Tabel / kolom | 22 tabel, 223 kolom; hash tabel+kolom identik |
 | Policy | 23; hash policy identik |
 | Trigger | 17 trigger publik; hash identik |
-| Fungsi | 23 signature (`19 private` + `4 public`); hash identik |
+| Fungsi | Phase 2: 23 signature (`19 private` + `4 public`); Phase 3A menambah 2 signature kategori |
 | Constraint | 158 (79 CHECK, 40 FK, 22 PK, 15 UNIQUE, 2 constraint trigger); selisih hitungan lokal murni karena PostgreSQL 18 mencatat 139 NOT NULL sebagai constraint |
 | Index | 59; nama dan jumlah sama |
 
-Riwayat migrasi kemudian dibuat dengan format resmi CLI (`version`, `statements`, `name`) dan diisi 11 versi. `list_migrations` menampilkan 11 entri yang konsisten. Perbaikan ini **tidak** menjalankan ulang SQL; schema sudah identik dan telah diverifikasi sebelum repair. `db push` tidak dijalankan karena CLI tidak memiliki access token/DB password pada sesi ini.
+Riwayat migrasi kemudian dibuat dengan format resmi CLI (`version`, `statements`, `name`) dan diisi 11 versi Phase 2. Versi `20261102091100` ditambahkan untuk RPC kategori Phase 3A; `list_migrations` menampilkan 12 entri yang konsisten. Perbaikan Phase 2 **tidak** menjalankan ulang SQL; schema sudah identik dan telah diverifikasi sebelum repair. `db push` tidak dijalankan karena CLI tidak memiliki access token/DB password pada sesi ini; migrasi kategori diterapkan melalui SQL terkontrol dan dicatat di riwayat.
 
 ## 2. Objek Database
 
 - **22 tabel** di schema `public`; seluruhnya RLS aktif.
 - **23 policy**: self/owner untuk profil; baca katalog untuk staf aktif; biaya hanya owner; transaksi hanya kasir pemilik atau owner; inventaris hanya owner/staf gudang; staging legacy dan audit hanya owner.
-- **19 fungsi `private`**: helper peran, provisioning, nomor dokumen, pengecekan pembayaran, guard opname/ledger/audit, katalog, admin.
-- **4 wrapper `public`** untuk PostgREST: `upsert_product`, `set_product_cost`, `admin_upsert_profile`, `set_feature_flag`.
+- **20 fungsi `private`**: helper peran, provisioning, nomor dokumen, pengecekan pembayaran, guard opname/ledger/audit, katalog, admin, kategori.
+- **5 wrapper `public`** untuk PostgREST: `upsert_product`, `set_product_cost`, `admin_upsert_profile`, `set_feature_flag`, `upsert_category`.
 - **Trigger**: `updated_at`, provisioning `auth.users`, deferred payment balance, transisi & immutability opname, immutability ledger/audit.
 - **Tidak ada** grant tabel untuk `anon`; `document_counters` tidak punya grant/policy sama sekali.
 
@@ -49,7 +50,7 @@ Riwayat migrasi kemudian dibuat dengan format resmi CLI (`version`, `statements`
 
 - `SECURITY DEFINER` selalu `set search_path = ''` dan memakai nama tabel fully qualified.
 - `require_active_role` memeriksa `auth.uid()`, `profiles.is_active`, dan `profiles.role`; bukan `user_metadata`.
-- Katalog RPC tidak pernah membaca atau menulis `stock_on_hand`/`stock_version`.
+- Katalog RPC tidak pernah membaca atau menulis `stock_on_hand`/`stock_version`; RPC kategori tidak melakukan hard delete.
 - `stock_movements` menolak UPDATE/DELETE; koreksi harus movement baru.
 - Pembayaran diperiksa saat COMMIT: Σ `amount_applied` (confirmed) = `grand_total`.
 - SKU memakai `sku_normalized = upper(btrim(sku))` yang unik; spasi di tepi ditolak.
@@ -85,14 +86,14 @@ Percobaan signup publik gagal sebelum membuat user: domain `example.com` ditolak
 ### Lokal
 
 Perintah: `npm run test:db` — PGlite PostgreSQL 18.6, in-process, tanpa Docker.
-Hasil terakhir: **20/20 lulus**, setelah 11 migrasi diterapkan bersih.
+Hasil terakhir: **22/22 lulus**, setelah 12 migrasi diterapkan bersih.
 
-Cakupan: anon ditolak; user tanpa profil/nonaktif ditolak; kasir tidak dapat menulis produk/stok; gudang tidak dapat menaikkan role; owner mengelola produk via RPC tanpa mengubah stok; `user_metadata` tidak menaikkan privilege; aritmetika ledger; pembayaran harus balance saat COMMIT; SKU case/space; opname posted immutable; nomor dokumen berurutan; provisioning; bootstrap owner; aktivasi + last-owner; feature flag; biaya owner-only; default privilege; audit append-only.
+Cakupan: anon ditolak; user tanpa profil/nonaktif ditolak; kasir tidak dapat menulis produk/stok; gudang tidak dapat menaikkan role; owner mengelola produk via RPC tanpa mengubah stok; harga `NULL` tetap `NULL`; duplikat SKU ditolak; owner mengelola kategori via RPC dengan proteksi duplikat dan audit; kasir tidak dapat memanggil RPC kategori; `user_metadata` tidak menaikkan privilege; aritmetika ledger; pembayaran harus balance saat COMMIT; SKU case/space; opname posted immutable; nomor dokumen berurutan; provisioning; bootstrap owner; aktivasi + last-owner; feature flag; biaya owner-only; default privilege; audit append-only.
 
 ### Hosted preview
 
 Perintah: `npm run test:hosted` — Supabase JS dengan publishable key dan sesi user nyata; tanpa `service_role`.
-Hasil: **20 passed, 0 failed, 1 skipped**.
+Hasil: **22 passed, 0 failed, 1 skipped**.
 
 | Area | Bukti |
 | --- | --- |
@@ -103,6 +104,8 @@ Hasil: **20 passed, 0 failed, 1 skipped**.
 | Aktivasi | Owner mengaktifkan kasir dan `inventory_staff` lewat `admin_upsert_profile` |
 | Last owner | Owner terakhir tidak dapat dinonaktifkan |
 | Katalog RPC | Create/update produk, biaya, feature flag berhasil; `stock_on_hand`/`stock_version` tidak berubah dari payload |
+| Kategori RPC | Create/rename/activate/deactivate berhasil; duplikat nama ditolak; audit `category.create` tercatat |
+| Query katalog | Join kategori/satuan dan pencarian SKU exact pada halaman `/products` berhasil |
 | Validasi RPC | SKU kosong, unit/kategori tidak valid, dan nama kosong ditolak |
 | Audit | `product.create` dan `product.update` tercatat |
 | Kasir | Baca produk; biaya kosong; INSERT/UPDATE produk dan stok ditolak; RPC owner ditolak meski metadata berisi `owner` |
@@ -116,10 +119,20 @@ Hasil: **20 passed, 0 failed, 1 skipped**.
 ### Build dan pemeriksaan lain
 
 - `npm run typecheck` — exit 0
-- `npm test` — 2 file, 8/8 lulus
+- `npm test` — 4 file, 28/28 lulus
 - `npm run build` — exit 0
 - `grep -rl "service_role" .output` — tidak ada hasil
 - `git diff --check` — exit 0
+
+## 4A. Phase 3A — Katalog
+
+- Route `/products` memakai `catalog.read`; kasir dan gudang mendapat tampilan baca-saja. Aksi pengelolaan memakai `catalog.manage` (owner).
+- Produk dibaca lewat PostgREST dengan join kategori/satuan, filter server-side, dan pagination 25/50/100. Harga beli dan `product_data_issues` hanya diminta untuk owner; RLS tetap menolak peran lain.
+- Create/edit/nonaktifkan memakai `public.upsert_product(jsonb)`. Payload tidak memuat field stok. `import_review_status` dikirim kembali saat edit agar status review tidak ter-reset diam-diam.
+- Harga beli memakai `public.set_product_cost(uuid, numeric)`; nilai `NULL` dipertahankan.
+- Kategori memakai `public.upsert_category(jsonb)` dari migrasi `20261102091100_rpc_category.sql`: owner-only, `search_path = ''`, duplikat nama ditolak, audit `category.create`/`category.update`, dan tidak ada hard delete.
+- Tes UI/unit: 4 file, 28/28; tes database 22/22; hosted 22/22 dengan 1 skip. Detail arsitektur ada di `docs/05-product-catalog.md`.
+- Impor master 1.361 produk adalah Phase 3B dan belum dijalankan. Target pencarian P95 < 300 ms belum diukur pada dataset penuh.
 
 ## 5. Status Temuan DB-01…DB-17
 
@@ -155,12 +168,13 @@ npx supabase db push
 npx supabase gen types typescript --linked > types/database.generated.ts
 ```
 
-Jangan menjalankan `db push` ke produksi tanpa persetujuan owner. CLI sesi ini tidak terautentikasi; repair riwayat preview dilakukan setelah verifikasi hash schema, bukan dengan mengulang SQL.
+Jangan menjalankan `db push` ke produksi tanpa persetujuan owner. CLI sesi ini tidak terautentikasi; repair riwayat preview dilakukan setelah verifikasi hash schema, bukan dengan mengulang SQL. Migrasi kategori Phase 3A sudah diterapkan ke preview dan dicatat sebagai versi `20261102091100`; produksi tetap belum menerima migrasi apa pun.
 
 ## 7. Batasan dan Prasyarat Produksi
 
 - **Expired access token** belum diuji; refresh, restore, invalid credentials, dan logout sudah.
-- **UI browser** belum diuji login end-to-end; Auth/PostgREST diuji lewat SDK dan HTTP nyata.
+- **UI browser owner** sudah diuji pada preview: login, `/products`, pencarian, validasi form, kategori, biaya, edit, dan logout. Tampilan baca-saja kasir/gudang belum diuji browser; Auth/PostgREST dan RLS-nya diuji lewat SDK/HTTP.
+- **P95 pencarian** belum diukur pada 1.361 produk; pagination dan query server-side sudah diuji secara fungsional.
 - **Sign-up hosted masih aktif**; wajib dimatikan sebelum produksi.
 - **Akun dan data uji** masih ada di preview; hapus/reset sebelum produksi.
 - `public.rls_auto_enable()` adalah fungsi event trigger platform yang dilaporkan advisor; bukan bagian migrasi ini. Tinjau sebelum produksi.

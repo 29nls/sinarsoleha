@@ -213,6 +213,22 @@ async function runTests() {
       assert(created.rows[0].p.stock_on_hand === null, 'catalog RPC created stock from a payload')
       assert(Number(created.rows[0].p.stock_version) === 0, 'catalog RPC changed stock_version')
 
+      const noPrice = await db.query(`select public.upsert_product($1::jsonb) as p`, [
+        JSON.stringify({
+          sku: 'RPC-NULL-1',
+          name: 'Produk Tanpa Harga',
+          unit_id: unitId,
+          sale_price: null,
+        }),
+      ])
+      assert(noPrice.rows[0].p.sale_price === null, 'catalog RPC converted a null price to zero')
+
+      await expectError('23505', () =>
+        db.query(`select public.upsert_product($1::jsonb)`, [
+          JSON.stringify({ sku: 'rpc-new-1', name: 'Duplikat', unit_id: unitId }),
+        ]),
+      )
+
       const updated = await db.query(`select public.upsert_product($1::jsonb) as p`, [
         JSON.stringify({
           product_id: PRODUCT,
@@ -264,6 +280,45 @@ async function runTests() {
     } finally {
       await db.exec('rollback')
     }
+  })
+
+  await test('owner manages categories through RPC with duplicate protection', async () => {
+    await asRole('authenticated', OWNER, async () => {
+      const created = await db.query(`select public.upsert_category($1::jsonb) as c`, [
+        JSON.stringify({ name: 'Kategori RPC' }),
+      ])
+      assert(created.rows[0].c.name === 'Kategori RPC', 'category RPC did not create a category')
+      assert(created.rows[0].c.is_active === true, 'new category is not active')
+
+      await expectError('23505', () =>
+        db.query(`select public.upsert_category($1::jsonb)`, [
+          JSON.stringify({ name: '  kategori rpc  ' }),
+        ]),
+      )
+
+      const updated = await db.query(`select public.upsert_category($1::jsonb) as c`, [
+        JSON.stringify({ category_id: created.rows[0].c.id, name: 'Kategori RPC Edit', is_active: false }),
+      ])
+      assert(updated.rows[0].c.name === 'Kategori RPC Edit', 'category RPC did not rename')
+      assert(updated.rows[0].c.is_active === false, 'category RPC did not deactivate')
+
+      const audit = await db.query(
+        `select count(*)::int as n from public.audit_logs
+          where action_key = 'category.create' and entity_id = $1`,
+        [String(created.rows[0].c.id)],
+      )
+      assert(audit.rows[0].n === 1, 'category.create was not audited')
+    })
+  })
+
+  await test('cashier cannot mutate categories through RPC', async () => {
+    await asRole('authenticated', CASHIER, async () => {
+      await expectError('42501', () =>
+        db.query(`select public.upsert_category($1::jsonb)`, [
+          JSON.stringify({ name: 'Kasir Tidak Boleh' }),
+        ]),
+      )
+    })
   })
 
   await test('TEST 9 — stock ledger arithmetic is enforced', async () => {

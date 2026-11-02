@@ -175,7 +175,7 @@ Struktur mengikuti konvensi Nuxt 4 (`app/` sebagai srcDir). Folder `server/api` 
 | 0 | Audit, keputusan arsitektur, risk register | Dokumen audit disetujui; data source terverifikasi | **Selesai** |
 | 1 | Nuxt + TS + Tailwind + Pinia + Supabase; layout, nav, auth store, error handling | Build & typecheck lulus; login route terlindungi; tanpa secret di bundle | **Selesai** (verifikasi build di `docs/PROGRESS.md`) |
 | 2 | Migrasi SQL, RLS, RPC inti, provisioning profil | Migrasi apply bersih; allow/deny per peran lulus; `complete_sale` atomik | **Selesai (preview hosted tervalidasi)** — 11 migrasi, 20/20 lokal + 20/20 hosted, Auth/RLS/RPC/locking; `complete_sale` tetap Fase 4; produksi belum |
-| 3 | Katalog & produk | CRUD + impor tervalidasi; tanpa gambar; SKU case-insensitive unik | Belum |
+| 3 | Katalog & produk | CRUD + impor tervalidasi; tanpa gambar; SKU case-insensitive unik | **Sebagian (3A selesai)** — katalog, filter, pagination, RPC kategori, 22/22 DB + 22/22 hosted; impor 3B belum |
 | 4 | Kasir | Checkout konkuren aman; payment = total; idempotency terbukti | Belum |
 | 5 | Inventaris & opname | `stock_version` basi ditolak; alasan wajib; posting atomik | Belum |
 | 6 | Laporan | Total laporan = total transaksi/ledger pada dataset uji; CSV | Belum |

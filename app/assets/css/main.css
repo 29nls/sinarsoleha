@@ -25,6 +25,35 @@ body {
   font-family: var(--font-sans);
 }
 
+button:not(:disabled),
+select:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+button:disabled,
+select:disabled,
+input:disabled {
+  cursor: not-allowed;
+}
+
+dialog.dialog-panel {
+  width: min(720px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--color-line);
+  background: var(--color-panel);
+  color: var(--color-ink);
+}
+
+dialog.dialog-panel::backdrop {
+  background: rgb(17 24 39 / 0.35);
+}
+
 .num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum";
@@ -161,6 +190,12 @@ body {
     border-color: #e8d5a8;
     background: #fdf6e3;
     color: var(--color-warn);
+  }
+
+  .tag-danger {
+    border-color: #e3b4b1;
+    background: #fdf3f2;
+    color: var(--color-danger);
   }
 
   .notice {

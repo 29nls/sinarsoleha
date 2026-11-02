@@ -562,6 +562,9 @@ isOneToOne: false
 "set_product_cost":
 { Args: { "p_product_id": string,"p_purchase_cost": number }; Returns: Json
                            },
+"upsert_category":
+{ Args: { "p_payload": Json }; Returns: Json
+                           },
 "upsert_product":
 { Args: { "p_payload": Json }; Returns: Json
                            }

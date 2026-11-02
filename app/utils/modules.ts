@@ -29,10 +29,10 @@ export const APP_MODULES: readonly AppModule[] = [
     key: 'products',
     label: 'Produk',
     path: '/products',
-    capability: 'catalog.manage',
+    capability: 'catalog.read',
     phase: 3,
-    available: false,
-    description: 'Katalog, kategori, satuan, harga, dan impor massal.',
+    available: true,
+    description: 'Katalog, kategori, satuan, harga, dan kualitas data.',
   },
   {
     key: 'cashier',

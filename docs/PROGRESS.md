@@ -73,6 +73,60 @@ Cakupan uji DB: anon ditolak; user tanpa profil/nonaktif ditolak; kasir tidak da
 2. Regenerasi tipe dari project hosted dan ulangi typecheck/build.
 3. Phase 3 — katalog dan impor; Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.
 
+## 2 November 2026 — Phase 3A (katalog produk)
+
+### Lingkup selesai
+
+- Halaman `/products` untuk owner, kasir, dan staf gudang. Kasir/gudang hanya membaca; owner mendapat aksi tambah/edit/nonaktifkan, harga beli, masalah data, dan kategori.
+- Tabel padat tanpa gambar: SKU, nama, kategori, satuan, harga jual, stok, status, dan aksi. Kolom harga beli serta masalah data hanya untuk owner.
+- Pencarian server-side SKU exact/prefix dan nama contains, debounce 150 ms, filter kategori/satuan/status/harga kosong/stok unknown/stok negatif/review, pagination 25/50/100 dengan total count.
+- Form create/edit memakai `public.upsert_product(jsonb)`, mempertahankan `NULL` harga dan `import_review_status`, dan tidak pernah mengirim field stok.
+- Harga beli owner-only memakai `public.set_product_cost`; nilai kosong tetap `NULL`.
+- Migrasi `20261102091100_rpc_category.sql` menambah `public.upsert_category(jsonb)` owner-only, validasi duplikat, audit, dan tanpa hard delete. Migrasi diterapkan ke preview dan dicatat di riwayat.
+
+### File dibuat
+
+- `app/pages/products/index.vue`
+- `app/composables/useProductCatalog.ts`
+- `app/services/catalog.ts`
+- `app/utils/catalog.ts`
+- `app/types/catalog.ts`
+- `app/components/catalog/ProductTable.vue`, `ProductFilters.vue`, `ProductFormDialog.vue`, `ProductCostDialog.vue`, `CategoryManagerDialog.vue`, `ProductStatus.vue`, `ProductIssueList.vue`
+- `supabase/migrations/20261102091100_rpc_category.sql`
+- `docs/05-product-catalog.md`, `tests/catalog.test.ts`, `tests/catalog-table.test.ts`, `vitest.config.ts`
+
+### File dimodifikasi
+
+- `app/utils/modules.ts` (Produk aktif, capability `catalog.read`)
+- `app/pages/dashboard/index.vue`, `app/assets/css/main.css`
+- `types/database.generated.ts` (regenerasi dari schema lokal)
+- `package.json`, `package-lock.json` (plugin Vue untuk tes SFC)
+- `scripts/db-test.mjs`, `scripts/hosted-smoke.mjs`
+- `README.md`, `docs/00-phase-0-audit.md`, `docs/02-database-review.md`, `docs/03-database-implementation.md`, `docs/04-rpc-contracts.md`, `supabase/tests/README.md`
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm test` | 4 file, **28/28** lulus |
+| `npm run test:db` | 12 migrasi apply bersih; **22/22** lulus |
+| `npm run test:hosted` | **22 passed, 0 failed, 1 skipped** |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+| `grep -rl "service_role" .output` | tidak ada hasil |
+
+Browser owner pada preview juga diuji: `/products` memuat produk nyata, pencarian SKU exact menyaring hasil, validasi form kosong tampil, dialog kategori/biaya/edit terbuka, dan logout kembali ke login tanpa error console.
+
+Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif, kolom owner vs non-owner, validasi form, payload tanpa stok, debounce, pagination, duplikat SKU/kategori, RPC kategori, audit, dan RLS kasir/gudang.
+
+### Batasan
+
+- Impor 1.361 produk (Phase 3B) belum dijalankan; tidak ada seed data palsu.
+- P95 pencarian belum diukur pada dataset penuh.
+- Alur browser owner sudah diuji; tampilan baca-saja kasir/gudang belum diuji browser, tetapi RLS dan API-nya diuji hosted.
+- Expired token tetap 1 tes yang di-skip.
+- Migrasi kategori diterapkan ke preview lewat SQL terkontrol; `db push` produksi belum dijalankan.
+
 ## 2 November 2026 — Phase 2B (hosted validation)
 
 ### Hasil

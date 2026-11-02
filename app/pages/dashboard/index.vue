@@ -34,9 +34,9 @@ const modules = APP_MODULES
     <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h1 class="text-lg font-semibold tracking-tight">Dasbor</h1>
-        <p class="text-[12px] text-[var(--color-muted)]">Fondasi aplikasi (Fase 1). Modul bisnis belum aktif.</p>
+        <p class="text-[12px] text-[var(--color-muted)]">Katalog produk aktif (Fase 3A). Modul transaksi belum aktif.</p>
       </div>
-      <span class="tag tag-accent">Fase 1 selesai</span>
+      <span class="tag tag-accent">Fase 3A aktif</span>
     </div>
 
     <div class="grid gap-4 lg:grid-cols-2">
