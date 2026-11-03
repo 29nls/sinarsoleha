@@ -44,6 +44,15 @@ export const APP_MODULES: readonly AppModule[] = [
     description: 'Keranjang, pembayaran tunai/QRIS, dan nota.',
   },
   {
+    key: 'transactions',
+    label: 'Riwayat Transaksi',
+    path: '/cashier/transactions',
+    capability: 'sale.read.own',
+    phase: 4,
+    available: true,
+    description: 'Riwayat, detail, cetak ulang, dan pembatalan transaksi.',
+  },
+  {
     key: 'inventory',
     label: 'Inventaris',
     path: '/inventory',

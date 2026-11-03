@@ -217,3 +217,11 @@ Phase 4B sudah membuat UI kasir yang memanggil RPC ini, mempertahankan keranjang
 - Nota memakai respons RPC dan snapshot `transactions`/`transaction_items`/`payments`; tidak membuat nilai sendiri.
 - Stok yang berubah setelah penolakan backend disegarkan tanpa menghapus baris dan tanpa mengganti harga yang dilihat kasir; checkout dinonaktifkan sampai quantity disesuaikan.
 - Status verifikasi: unit test lokal lulus, tetapi checkout hosted dan browser E2E **belum** dijalankan. Lihat `docs/08-cashier-interface.md`.
+
+## 19. Manajemen transaksi Phase 4C
+
+- Riwayat transaksi `/cashier/transactions` membaca snapshot dari tabel `transactions`, `transaction_items`, `payments`.
+- Detail tidak join `profiles` dan tidak fetch produk terkini; nama kasir diisi dari profil auth jika cocok.
+- Cetak ulang struk memakai `ReceiptView.vue` via `window.print()`; tidak membuat transaksi baru.
+- Void melalui `public.void_sale` (owner-only, alasan 1-500 karakter, idempoten). Bukan refund.
+- Lihat `docs/09-transaction-management.md` untuk detail arsitektur.

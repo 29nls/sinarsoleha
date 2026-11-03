@@ -348,3 +348,50 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 2. Jalankan `npm run test:hosted:transactions`; catat race stok, idempotensi, void, pembayaran, dan rekonsiliasi.
 3. Uji browser dua sesi kasir (login, cari, keranjang, tunai/QRIS/split, retry timeout, nota, logout, gudang ditolak).
 4. Putuskan kebijakan diskon/refund/QRIS sebelum produksi; Phase 5 tetap belum dimulai.
+
+## 3 November 2026 — Phase 4C (manajemen transaksi)
+
+### Lingkup
+
+- Riwayat transaksi `/cashier/transactions` dengan pagination server-side, filter tanggal/nota/status/pembayaran, sorting stabil `business_date desc, created_at desc, id desc`, state loading/kosong/error.
+- Detail transaksi `/cashier/transactions/[id]` dari snapshot tersimpan (`transactions`, `transaction_items`, `payments`); tidak fetch produk terkini.
+- Cetak ulang struk via `ReceiptView.vue` yang sudah ada; tidak membuat transaksi baru.
+- Pembatalan transaksi owner-only melalui `public.void_sale(p_transaction_id, p_reason)`; kasir tidak bisa void; alasan 1-500 karakter; pesan sukses "Transaksi berhasil dibatalkan."
+- Navigasi "Riwayat Transaksi" dengan capability `sale.read.own`.
+- Tidak join `profiles` pada list/detail karena RLS membatasi akses profil.
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Tipe | `app/types/transactions.ts` |
+| Layanan | `app/services/transactions.ts` |
+| Composables | `app/composables/useTransactionHistory.ts`, `useTransactionDetail.ts`, `useTransactionVoid.ts` |
+| Komponen | `app/components/transactions/TransactionFilters.vue`, `TransactionTable.vue`, `VoidTransactionDialog.vue` |
+| Halaman | `app/pages/cashier/transactions/index.vue`, `app/pages/cashier/transactions/[id].vue` |
+| Tes | `tests/transactions.test.ts` |
+| Dokumentasi | `docs/09-transaction-management.md` |
+
+### File dimodifikasi
+
+- `app/utils/modules.ts` — modul riwayat transaksi aktif.
+- `README.md` — status Phase 4C.
+- `docs/PROGRESS.md` — entri Phase 4C.
+- `docs/07-transaction-engine.md` — referensi Phase 4C.
+- `docs/08-cashier-interface.md` — section Phase 4C ditambahkan.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm test` | **83/83 lulus** (7 file; 17 tes transaksi baru) |
+| `npm run test:db` | **42/42 lulus** |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (19,3 dtk) |
+
+### Batasan
+
+- Acceptance hosted Phase 4A/4B masih tertunda; checkout tetap nonaktif (`hostedCheckoutEnabled = false`).
+- Tidak ada migration baru; schema/RLS/RPC sudah cukup.
+- Tidak ada dashboard widget, printer termal, gateway QRIS, refund, opname, atau laporan.
+- Filter kasir untuk owner tidak ditampilkan di UI karena tidak ada daftar kasir yang aman dibaca.

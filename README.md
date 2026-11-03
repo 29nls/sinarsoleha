@@ -21,6 +21,8 @@ Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idem
 
 Phase 4B menambah `/cashier` untuk owner dan kasir aktif: pencarian server-side, tabel tanpa foto, keranjang yang menggabungkan produk duplikat, pembayaran tunai/QRIS manual/split, idempotensi retry, dan nota ramah cetak. Submit checkout sengaja dinonaktifkan sampai gate validasi Phase 4A.1 hosted lulus. 66/66 tes unit, typecheck, dan build lulus; checkout hosted serta browser E2E belum dijalankan. Stok `NULL` tetap tidak dapat dijual — lihat `docs/08-cashier-interface.md`.
 
+Phase 4C menambah riwayat transaksi (`/cashier/transactions`), detail transaksi dari snapshot tersimpan, cetak ulang struk via `ReceiptView`, dan pembatalan transaksi owner-only via `void_sale`. Pagination server-side, filter tanggal/nota/status/pembayaran, sorting stabil. Tidak join `profiles`, tidak fetch produk terkini. Lihat `docs/09-transaction-management.md`.
+
 ## Menjalankan
 
 ```bash
@@ -75,4 +77,5 @@ types/          tipe database hasil generate
 - `docs/06-product-master-import.md` — staging, RPC, impor, dan rekonsiliasi Phase 3B
 - `docs/07-transaction-engine.md` — mesin transaksi, idempotensi, penguncian, dan void Phase 4A
 - `docs/08-cashier-interface.md` — UI kasir, pembayaran, idempotensi klien, dan batas verifikasi Phase 4B
+- `docs/09-transaction-management.md` — riwayat, detail, cetak ulang, dan pembatalan transaksi Phase 4C
 - `docs/PROGRESS.md` — log pengembangan
