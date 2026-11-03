@@ -10,4 +10,6 @@ dist
 .tmp
 logs
 *.log
+test-results/
+playwright-report/
 .DS_Store

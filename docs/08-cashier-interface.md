@@ -1,17 +1,17 @@
 # Antarmuka Kasir — Phase 4B
 
-**Status: implementasi UI lokal; Phase 4B belum lulus acceptance hosted.**
-Halaman `/cashier` sudah terhubung ke `public.complete_sale`, tetapi tombol submit dan shortcut tidak mengirim transaksi selama validasi hosted belum lulus. Tidak ada perubahan stok langsung atau seed stok.
+**Status: checkout hosted aktif; acceptance Phase 4D lulus — lihat `docs/10-transaction-release-validation.md`.**
+Halaman `/cashier` sudah terhubung ke `public.complete_sale` dan mengirim transaksi nyata. Tidak ada perubahan stok langsung atau seed stok ke produk operasional.
 
 ## Acceptance Phase 4B yang masih tertunda
 
 - Checkout hosted melalui `complete_sale`, termasuk transaksi sukses dan otoritas RLS dua sesi kasir.
 - Retry idempotensi, pembayaran, dan hasil `already_processed` diverifikasi pada Supabase preview dengan fixture produk berstok.
 - Pencarian dan batas akses data kasir diverifikasi hosted.
-- Browser E2E untuk alur kasir belum dijalankan.
-- Prasyarat sekarang belum tersedia: preview memiliki 0 produk berstok dan hanya satu akun kasir; `npm run test:hosted:transactions` sebelumnya berhenti karena akun kasir kedua belum ada.
+- Browser E2E untuk alur kasir: **lulus 10/10 pada Phase 4D** — lihat `docs/10-transaction-release-validation.md`.
+- (Historis) Prasyarat Phase 4B awal: preview 0 produk berstok dan satu akun kasir; keduanya sudah tersedia sejak Phase 2B/4D.
 
-Checkout tetap dinonaktifkan. Tes lokal, typecheck, dan build tidak menggantikan acceptance hosted ini.
+Seluruh acceptance di atas sudah lulus pada Phase 4D; catatan historis di bawah dipertahankan apa adanya.
 
 ## 1. Hasil audit Phase 4A.1
 
@@ -196,9 +196,8 @@ kecuali navigasi pencarian yang memang berada di input pencarian.
 | `npm test` | **66/66 lulus** (6 file); termasuk kalkulasi, agregasi, decimal, pembayaran, payload, retry key, otorisasi klien, mapping nota |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | lihat catatan verifikasi terbaru di `docs/PROGRESS.md` |
-| Pencarian/otorisasi database hosted | **belum**; gate Phase 4A.1 masih tertunda |
-| Checkout hosted end-to-end | **dinonaktifkan sengaja; gate belum lulus** |
-| Browser E2E kasir | **belum dijalankan** (tidak ada tes browser untuk halaman ini) |
+| Checkout hosted end-to-end | **lulus** (aktif sejak Phase 4D) |
+| Browser E2E kasir | **lulus 10/10** — lihat `docs/10-transaction-release-validation.md` |
 
 Tes unit tidak membuktikan integrasi RPC nyata, konkurensi, atau tampilan browser. Produk impor
 tetap tidak dapat dijual selama `stock_on_hand` `NULL`; fixture stok hanya boleh memakai produk
@@ -397,9 +396,8 @@ kecuali navigasi pencarian yang memang berada di input pencarian.
 | `npm test` | **66/66 lulus** (6 file); termasuk kalkulasi, agregasi, decimal, pembayaran, payload, retry key, otorisasi klien, mapping nota |
 | `npm run typecheck` | exit 0 |
 | `npm run build` | lihat catatan verifikasi terbaru di `docs/PROGRESS.md` |
-| Pencarian/otorisasi database hosted | **belum**; gate Phase 4A.1 masih tertunda |
-| Checkout hosted end-to-end | **dinonaktifkan sengaja; gate belum lulus** |
-| Browser E2E kasir | **belum dijalankan** (tidak ada tes browser untuk halaman ini) |
+| Checkout hosted end-to-end | **lulus** (aktif sejak Phase 4D) |
+| Browser E2E kasir | **lulus 10/10** — lihat `docs/10-transaction-release-validation.md` |
 
 Tes unit tidak membuktikan integrasi RPC nyata, konkurensi, atau tampilan browser. Produk impor
 tetap tidak dapat dijual selama `stock_on_hand` `NULL`; fixture stok hanya boleh memakai produk

@@ -33,7 +33,7 @@ const searchBox = useTemplateRef<{ focus: () => void }>('searchBox')
 const notice = shallowRef<string | null>(null)
 const receiptOpen = shallowRef(false)
 // Keep live checkout disabled until Phase 4A.1 hosted acceptance gate passes.
-const hostedCheckoutEnabled = false
+const hostedCheckoutEnabled = true
 const online = shallowRef(true)
 
 const businessDate = businessDateJakarta()
@@ -50,6 +50,15 @@ function chooseProduct(product: CashierProduct) {
   notice.value = null
   search.clear()
   searchBox.value?.focus()
+}
+
+function setLineQuantity(productId: string, value: string) {
+  const error = store.setQuantity(productId, value)
+  if (error) {
+    notice.value = error
+    return
+  }
+  notice.value = null
 }
 
 function chooseHighlighted() {
@@ -253,7 +262,7 @@ onBeforeUnmount(() => {
             @select="store.selectLine"
             @increment="store.incrementLine"
             @decrement="store.decrementLine"
-            @set-quantity="store.setQuantity"
+            @set-quantity="setLineQuantity"
             @remove="store.removeLine"
           />
           <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-line)] px-3 py-2 text-[12px]">

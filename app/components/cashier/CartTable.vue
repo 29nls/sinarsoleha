@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CartLine } from '~/types/cashier'
 import { formatQuantity, formatRupiah } from '~/utils/format'
-import { centsToAmount, lineTotalCents, quantityStep } from '~/utils/cashier'
+import { centsToAmount, lineTotalCents, quantityStep, validateQuantity } from '~/utils/cashier'
 
 const props = defineProps<{
   lines: CartLine[]
@@ -18,7 +18,13 @@ const emit = defineEmits<{
 }>()
 
 function onQuantityChange(event: Event, productId: string) {
-  emit('setQuantity', productId, (event.target as HTMLInputElement).value)
+  const input = event.target as HTMLInputElement
+  emit('setQuantity', productId, input.value)
+  // The store rejects invalid quantities; reset the input so it always shows the real cart value.
+  const line = props.lines.find((item) => item.product.id === productId)
+  if (line && validateQuantity(input.value, line.product).error) {
+    input.value = String(line.quantity)
+  }
 }
 
 function lineTotal(line: CartLine): string {

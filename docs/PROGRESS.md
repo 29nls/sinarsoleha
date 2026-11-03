@@ -395,3 +395,39 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 - Tidak ada migration baru; schema/RLS/RPC sudah cukup.
 - Tidak ada dashboard widget, printer termal, gateway QRIS, refund, opname, atau laporan.
 - Filter kasir untuk owner tidak ditampilkan di UI karena tidak ada daftar kasir yang aman dibaca.
+
+## 3 November 2026 — Phase 4D (validasi transaksi hosted & acceptance release)
+
+### Lingkup
+
+- Suite transaksi hosted dijalankan ke Supabase preview (`ptbllrugrjepdhhdkzxn`) dengan fixture `TEST-TXN-RACE-001`, `TEST-TXN-IDEMPOTENCY-001`, `TEST-TXN-PAY-001` dan dua sesi kasir independen (owner, cashier_a, cashier_b dari `.tmp/phase2b-accounts.json`). Race oversell, idempotensi same-key retry, void owner/kasir, QRIS manual, split, dan `already_processed` — lulus 10/10.
+- Browser E2E kasir baru (`e2e/cashier.spec.mjs`, Playwright, workers=1, `npm run test:e2e`): 10 senario end-to-end terhadap dev server lokal — redirect sesi, login invalid, pencarian + stok NULL + guard oversell, checkout tunai + nota, QRIS tanpa konfirmasi lalu sukses, retry idempotensi via UI, riwayat/detail/cetak ulang + kasir tidak bisa void, void owner (alasan wajib, stok kembali), gudang 403, logout — lulus 10/10.
+- Checkout hosted diaktifkan di UI (`hostedCheckoutEnabled = true`).
+- Rekonsiliasi preview: stok akhir fixture identik dengan Σ delta `stock_movements` (RACE 0, IDEMPOTENCY 1, PAY 2); void mengembalikan stok tepat satu kali; nota `SS-20261103-0001–0033` unik berurutan; tidak ada drift ledger.
+- Detail lengkap: `docs/10-transaction-release-validation.md`.
+
+### File dibuat / dimodifikasi
+
+| Kelompok | File |
+| --- | --- |
+| E2E baru | `e2e/cashier.spec.mjs`, `playwright.config.mjs`, script `test:e2e` di `package.json` (`.tmp/e2e-state.json` dibuat saat run) |
+| Perbaikan bug | `app/components/cashier/CartTable.vue` (reset input saat quantity ditolak — nilai tercetak kembali ke qty keranjang), `app/pages/cashier/index.vue` (aktifkan checkout, handler set-quantity + notice kode error), migrasi `20261103110000_transaction_engine.sql` (wrapper cast numeric) |
+| Konfigurasi tes | `vitest.config.ts` (hexclude `e2e/**` dari vitest) |
+| Dokumentasi | `docs/10-transaction-release-validation.md` baru; `README.md`, `docs/PROGRESS.md`, `docs/07-transaction-engine.md`, `docs/08-cashier-interface.md` diperbarui |
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm test` | **83/83 lulus** (vitest, e2e dikecualikan) |
+| `npm run test:db` | **42/42 lulus** |
+| Suite hosted `可想test:hosted:transactions` | **10/10 lulus** |
+| Browser E2E `npx playwright test` | **10/10 lulus** (29,2 dtk) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+
+### Batasan
+
+- Produksi belum diterapkan; seluruh migrasi hanya di preview. Race browser E2E berjalan serial (workers=1) — jaminan konkurensi tetap dari suite hosted dan `FOR UPDATE`.
+- Tidak ada perubahan stok ke 1.360 produk impor (tetap `stock_on_hand NULL`); fixture hanya produk `TEST-TXN-*`.
+- Keputusan bisnis terbuka (diskon, refund, jendela void, bukti QRIS) tetap di `docs/07-transaction-engine.md` bagian 16; Phase 5 belum dimulai.

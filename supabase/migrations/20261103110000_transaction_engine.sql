@@ -450,7 +450,7 @@ begin
   select * into v_existing from public.transactions t where t.id = v_tx_id;
   return private.sale_response(v_existing, false);
 exception
-  when invalid_text_representation or numeric_value_out_of_range or invalid_parameter_value then
+  when invalid_text_representation or numeric_value_out_of_range then
     raise exception using errcode = '22023', message = 'INVALID_PAYLOAD: Tipe data payload checkout tidak valid.';
 end;
 $$;

@@ -1,7 +1,7 @@
 # Mesin Transaksi — Phase 4A
 
 **Status: backend diimplementasikan dan diuji lokal; migrasi aktif di preview; uji transaksi hosted tertunda.**
-`complete_sale` dan `void_sale` sudah ada di migrasi `20261103110000_transaction_engine.sql` dan lulus 42/42 tes database lokal (10 tes baru). Objek migrasi sudah terverifikasi di preview (`request_fingerprint`, signature RPC, dan matriks otorisasi). Uji konkurensi, idempotensi, void, dan pembayaran hosted belum dijalankan karena preview belum memiliki produk berstok dan akun kasir kedua.
+`complete_sale` dan `void_sale` ada di migrasi `20261103110000_transaction_engine.sql` dan lulus 42/42 tes database lokal (10 tes baru). Matriks otorisasi hosted terverifikasi di preview; fixture `TEST-TXN-*` sudah ada, dan sejak Phase 4D uji konkurensi, idempotensi, void, dan pembayaran hosted **lulus 10/10** serta browser E2E kasir **lulus 10/10** — lihat `docs/10-transaction-release-validation.md`.
 
 UI kasir Phase 4B sudah memanggil kontrak ini secara lokal (lihat `docs/08-cashier-interface.md`), tetapi belum ada checkout hosted yang berhasil diverifikasi. Operasi opname dan Realtime tetap Phase 5.
 
@@ -180,7 +180,8 @@ Migrasi `20261103110000_transaction_engine.sql`:
 - **Migrasi sudah aktif di preview.** Objek terverifikasi lewat probe read-only; riwayat migrasi CLI tidak dapat dibaca karena tidak ada access token dan project belum di-link.
 - **Fixture stok belum ada.** Semua produk preview memiliki `stock_on_hand NULL`; SQL seed disediakan di `supabase/tests/phase4a_preview_fixtures.sql` dan harus dijalankan owner lewat SQL Editor preview.
 - **Akun kasir kedua belum ada.** Preview hanya memiliki owner, satu kasir, staf gudang, dan akun nonaktif.
-- **Uji konkurensi, idempotensi, void, dan pembayaran hosted belum dijalankan.** PGlite memakai satu koneksi, sehingga row lock tidak dapat diuji paralel secara lokal; jaminan saat ini berasal dari `FOR UPDATE` berurutan dan tes oversell sekuensial.
+- **Uji konkurensi, idempotensi, void, dan pembayaran hosted pada Phase 4A/4B belum dijalankan.** PGlite memakai satu koneksi, sehingga row lock tidak dapat diuji paralel secara lokal; jaminan saat ini berasal dari `FOR UPDATE` berurutan dan tes oversell sekuensial.
+- **Sejak Phase 4D seluruh rentetan di atas lulus** (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`; catatan "belum dijalankan" di bagian ini hanya berlaku untuk masa Phase 4A/4B.
 - **Matriks otorisasi hosted sudah terverifikasi:** anon/gudang/nonaktif `42501`, kasir mencapai fungsi (`P0002` untuk produk uji), kasir void `42501`, owner void mencapai fungsi (`P0002`).
 - `customer_id` belum dipakai untuk harga khusus atau loyalitas.
 - Laporan penjualan belum ada; pengecualian nota void harus diterapkan saat laporan dibuat.
@@ -216,7 +217,7 @@ Phase 4B sudah membuat UI kasir yang memanggil RPC ini, mempertahankan keranjang
 - Satu idempotency key per niat checkout. Timeout/network error mempertahankan key, payload, dan keranjang; retry mengirim payload yang sama. Keranjang hanya dikosongkan setelah sukses.
 - Nota memakai respons RPC dan snapshot `transactions`/`transaction_items`/`payments`; tidak membuat nilai sendiri.
 - Stok yang berubah setelah penolakan backend disegarkan tanpa menghapus baris dan tanpa mengganti harga yang dilihat kasir; checkout dinonaktifkan sampai quantity disesuaikan.
-- Status verifikasi: unit test lokal lulus, tetapi checkout hosted dan browser E2E **belum** dijalankan. Lihat `docs/08-cashier-interface.md`.
+- Status verifikasi: unit test lokal lulus; sejak Phase 4D checkout hosted dan browser E2E **lulus** — lihat `docs/10-transaction-release-validation.md`.
 
 ## 19. Manajemen transaksi Phase 4C
 
