@@ -4,6 +4,8 @@ import { useAuthStore } from '~/stores/auth'
 import { useSupabaseClient } from '~/composables/useSupabase'
 import { useStockDiscrepancies } from '~/composables/useInventory'
 import { OPNAME_REASONS, OPNAME_REASON_LABELS } from '~/types/opname'
+import { toCsv } from '~/types/reports'
+import { downloadCsv } from '~/utils/download'
 import DiscrepancyTable from '~/components/inventory/DiscrepancyTable.vue'
 import InventoryTabs from '~/components/inventory/InventoryTabs.vue'
 
@@ -39,6 +41,41 @@ const {
 const reasonOptions = computed(() =>
   OPNAME_REASONS.map((value) => ({ value, label: OPNAME_REASON_LABELS[value] ?? value })),
 )
+
+/** Same scope as the table: the current page of the current filter. */
+function exportDiscrepancies(): void {
+  const csv = toCsv(
+    [
+      'Tanggal',
+      'SKU',
+      'Produk',
+      'Revisi',
+      'Stok sistem',
+      'Stok fisik',
+      'Selisih',
+      'Satuan',
+      'Alasan',
+      'Catatan',
+      'Dicatat oleh',
+      'Disetujui oleh',
+    ],
+    rows.value.map((row) => [
+      row.createdAt,
+      row.sku,
+      row.productName,
+      row.revision,
+      row.systemQty,
+      row.physicalQty,
+      row.differenceQty,
+      row.unitLabel,
+      OPNAME_REASON_LABELS[row.reasonCode] ?? row.reasonCode,
+      row.reasonNote,
+      row.createdByLabel,
+      row.approvedByLabel,
+    ]),
+  )
+  downloadCsv(`selisih-stok-halaman-${page.value}.csv`, csv)
+}
 </script>
 
 <template>
@@ -118,9 +155,19 @@ const reasonOptions = computed(() =>
     <section class="panel" aria-labelledby="discrepancy-list-title">
       <div class="panel-head">
         <h2 id="discrepancy-list-title" class="panel-title">Laporan selisih</h2>
-        <span class="num text-[11px] text-[var(--color-muted)]">
-          {{ rangeStart }}–{{ rangeEnd }} dari {{ total }}
-        </span>
+        <div class="flex items-center gap-2">
+          <span class="num text-[11px] text-[var(--color-muted)]">
+            {{ rangeStart }}–{{ rangeEnd }} dari {{ total }}
+          </span>
+          <button
+            class="btn text-[11px]"
+            type="button"
+            :disabled="loading || rows.length === 0"
+            @click="exportDiscrepancies"
+          >
+            Ekspor halaman (CSV)
+          </button>
+        </div>
       </div>
 
       <DiscrepancyTable :rows="rows" :loading="loading" :error="error" />

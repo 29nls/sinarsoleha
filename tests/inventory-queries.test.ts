@@ -47,6 +47,90 @@ describe('listStockBalances', () => {
     expect(calls).toContainEqual(['range', [25, 49]])
   })
 
+  it('scans the catalog and filters low stock in the browser', async () => {
+    const { client } = queryClient({
+      data: [
+        {
+          id: 'p-1',
+          sku: 'A-1',
+          name: 'Rendah',
+          stock_on_hand: 2,
+          stock_version: 1,
+          low_stock_threshold: 5,
+          is_active: true,
+          import_review_status: 'clean',
+          categories: null,
+          units_of_measure: null,
+        },
+        {
+          id: 'p-2',
+          sku: 'A-2',
+          name: 'Aman',
+          stock_on_hand: 9,
+          stock_version: 1,
+          low_stock_threshold: 5,
+          is_active: true,
+          import_review_status: 'clean',
+          categories: null,
+          units_of_measure: null,
+        },
+        {
+          id: 'p-3',
+          sku: 'A-3',
+          name: 'Habis',
+          stock_on_hand: 0,
+          stock_version: 1,
+          low_stock_threshold: 5,
+          is_active: true,
+          import_review_status: 'clean',
+          categories: null,
+          units_of_measure: null,
+        },
+      ],
+      error: null,
+    })
+
+    const result = await listStockBalances(client, {
+      search: '',
+      state: 'low',
+      page: 1,
+      pageSize: 25,
+    })
+
+    // Zero is "habis", not "rendah"; unknown stock is never low.
+    expect(result.rows.map((row) => row.sku)).toEqual(['A-1'])
+    expect(result.total).toBe(1)
+  })
+
+  it('paginates the client-side low-stock matches truthfully', async () => {
+    const row = (index: number) => ({
+      id: `p-${index}`,
+      sku: `A-${index}`,
+      name: `Produk ${index}`,
+      stock_on_hand: 1,
+      stock_version: 1,
+      low_stock_threshold: 5,
+      is_active: true,
+      import_review_status: 'clean',
+      categories: null,
+      units_of_measure: null,
+    })
+    const { client } = queryClient({
+      data: [row(1), row(2), row(3), row(4), row(5)],
+      error: null,
+    })
+
+    const result = await listStockBalances(client, {
+      search: '',
+      state: 'low',
+      page: 2,
+      pageSize: 2,
+    })
+
+    expect(result.total).toBe(5)
+    expect(result.rows.map((item) => item.sku)).toEqual(['A-3', 'A-4'])
+  })
+
   it('searches SKU and name with an escaped wildcard', async () => {
     const { client, calls } = queryClient({ data: [], error: null, count: 0 })
 

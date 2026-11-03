@@ -29,10 +29,19 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 - **Saldo `NULL` tetap `NULL`.** `stock_on_hand` bisa belum diketahui untuk
   1.360 produk impor. UI menampilkan `—` dan tag "Belum diketahui"; tidak
   pernah dirender sebagai `0`.
-- **Filter "stok rendah" tidak di server.** PostgREST tidak bisa membandingkan
-  dua kolom (`stock_on_hand <= low_stock_threshold`). Baris rendah tetap
-  ditandai `tag-warn` di tabel, dan filter server hanya menyediakan
-  unknown/negatif/kosong. Filter rendah menyusul di laporan Phase 6.
+- **Filter "stok rendah" dihitung di klien, bukan diabaikan.** PostgREST tidak
+  bisa membandingkan dua kolom (`stock_on_hand <= low_stock_threshold`), jadi
+  service memindai katalog bertahap 1.000 baris (batas
+  `LOW_STOCK_SCAN_LIMIT = 5000`), memfilter `stok > 0 && stok <= batas`, lalu
+  memotong halaman yang diminta. Total dan paginasi tetap benar karena
+  pemotongan dilakukan setelah filter, bukan per halaman. Stok `NULL` dan `0`
+  tidak dihitung rendah — keduanya punya filter sendiri (belum diketahui /
+  habis). Bila katalog melewati 5.000 baris, filter hanya memindai 5.000 baris
+  pertama dan angka tidak boleh dianggap sensus penuh.
+- **Ekspor CSV hanya untuk halaman yang tampil.** Tombol berbunyi "Ekspor
+  halaman (CSV)" dan berkasnya memuat baris pada halaman aktif dengan filter
+  aktif, bukan seluruh hasil. Ekspor seluruh katalog bukan tujuan tabel ini;
+  angka penuh tetap milik laporan.
 - **Tanggal dalam zona Jakarta.** `date` dari `<input type="date">` diperluas
   menjadi `T00:00:00+07:00` dan `T23:59:59.999+07:00` agar rentang satu hari
   tetap inklusif, sama seperti `business_date` transaksi.
@@ -61,7 +70,7 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 | `app/pages/inventory/movements.vue` | Halaman pergerakan; menerima `?product=SKU`. |
 | `app/pages/inventory/discrepancies.vue` | Halaman selisih. |
 | `tests/inventory.test.ts` | 12 tes helper tipe dan error. |
-| `tests/inventory-queries.test.ts` | 10 tes bentuk query dan pemetaan baris. |
+| `tests/inventory-queries.test.ts` | 12 tes bentuk query, pemetaan baris, dan filter stok rendah. |
 
 ## Perilaku penting
 
@@ -73,12 +82,22 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 - Baris selisih tanpa `approved_by` diberi tag "Belum disetujui".
 - Semua tabel memakai `.panel`, `.table-dense`, `.field`, `.btn`, `.tag`, dan
   `.notice` dari `app/assets/css/main.css`; tidak ada gaya baru.
+- Tombol "Ekspor halaman (CSV)" tersedia di tabel saldo dan laporan selisih.
+  CSV dibuat di browser dengan `toCsv` + `downloadCsv` (BOM UTF-8), memakai
+  label yang terbaca (mis. status saldo dan alasan selisih), dan nilai `null`
+  menjadi sel kosong — bukan `0`.
+- Catatan di bawah tabel saldo menyebut filter aktif dan menjelaskan bahwa
+  angka dihitung di browser, sehingga pengguna tidak menyangka filter server.
 
 ## Batasan
 
 - Ledger bersifat immutable (trigger menolak UPDATE/DELETE). Halaman ini murni
   baca; koreksi dilakukan dengan movement baru lewat opname, bukan edit.
-- Belum ada ekspor CSV/Excel dan belum ada grafik tren.
+- Ekspor CSV hanya mencakup satu halaman, bukan seluruh hasil filter; belum
+  ada ekspor Excel dan belum ada grafik tren.
+- Filter stok rendah memindai maksimal 5.000 produk. Katalog saat ini 1.360,
+  jadi batas belum tercapai, tetapi katalog yang jauh lebih besar akan membuat
+  filter ini tidak lengkap dan perlu dipindahkan ke view/RPC.
 - Belum ada Realtime; pengguna lain perlu "Muat ulang" untuk melihat movement
   terbaru.
 - Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview

@@ -780,3 +780,98 @@ disentuh.
 - CSP/HSTS belum dipasang; harus dilakukan di lapisan hosting sebelum produksi.
 - Migrasi Phase 5A **masih menunggu approval** untuk preview
   `ptbllrugrjepdhdhhdkzxn`; produksi tidak disentuh.
+
+## 5 November 2026 — Phase 9 (halaman pengguna, audit log, filter & ekspor inventaris)
+
+Menutup sisa pekerjaan UI: administrasi profil staf, pembacaan audit log,
+filter "stok rendah" yang sebelumnya ditunda, dan ekspor CSV halaman.
+**Tidak ada migrasi baru** — `public.admin_upsert_profile`, policy
+`profiles_select_self_or_owner` dan `audit_logs_select_owner`, serta grant
+`select` pada kedua tabel sudah ada sejak Phase 2. Phase 5A tetap menunggu
+approval untuk preview; produksi tidak disentuh.
+
+### Yang dibuat
+
+- `app/types/users.ts` — `UserRow`/`UserDraft`, `roleLabel`, `shortUserId`,
+  `validateFullName` (cermin constraint 120 karakter), `isLastActiveOwner`,
+  `describeUsersError` (`LAST_OWNER`, `INVALID_ROLE`, `INVALID_FULL_NAME`,
+  `PROFILE_NOT_FOUND`, `USER_REQUIRED`, permission/JWT).
+- `app/services/users.ts` — `listProfiles` (urut `full_name`) dan
+  `adminUpsertProfile` lewat RPC `admin_upsert_profile`; peran tak dikenal
+  dipetakan ke `cashier`, bukan dirender mentah.
+- `app/composables/useUsers.ts` — `rows/loading/saving/error/loaded`,
+  `activeCount`/`ownerCount`, `load(force)`, `save` yang mengembalikan pesan
+  error, dan `lastOwner(row)`.
+- `app/components/users/UserTable.vue`, `UserEditDialog.vue`,
+  `app/pages/users/index.vue` — tabel, dialog nama/peran/aktif, kartu
+  ringkasan, dan catatan bahwa email/kata sandi dikelola Supabase Auth.
+- `app/types/audit.ts` — 20 label `action_key` nyata dari
+  `private.write_audit`, `summarizeAuditData` (potong 158 karakter),
+  `auditCsv`, `describeAuditError`.
+- `app/services/audit.ts` — `listAuditLogs` dengan filter `action_key`,
+  `entity_name`, rentang tanggal Jakarta, urutan `created_at desc, id desc`,
+  dan embed `profiles` untuk nama pelaku.
+- `app/composables/useAudit.ts` — filter reaktif, paginasi 25/50/100,
+  request-id guard, `onScopeDispose`.
+- `app/components/audit/AuditTable.vue`, `app/pages/audit/index.vue` — tabel
+  audit, panel detail JSON sebelum/sesudah, ekspor satu halaman.
+- `tests/users-service.test.ts` (10 tes) dan `tests/audit-service.test.ts`
+  (8 tes).
+- `docs/17-users-audit.md`.
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `app/utils/modules.ts` | Modul `users` (`/users`) dan `audit` (`/audit`), capability `users.manage`, phase 9, `available: true`. |
+| `app/types/inventory.ts` | `STOCK_STATES` + `low`, label `Stok rendah (≤ batas)`. |
+| `app/services/inventory.ts` | `toBalanceRow`, `LOW_STOCK_SCAN_PAGE = 1000`, `LOW_STOCK_SCAN_LIMIT = 5000`, `isLowStock`, `listLowStockBalances`. |
+| `app/pages/inventory/index.vue` | Tombol "Ekspor halaman (CSV)" + catatan filter aktif. |
+| `app/pages/inventory/discrepancies.vue` | Tombol "Ekspor halaman (CSV)". |
+| `tests/inventory-queries.test.ts` | 2 tes filter/paginasi stok rendah. |
+| `tests/permissions.test.ts` | 1 tes modul Phase 9 hanya untuk owner. |
+| `docs/13-inventory-ui.md` | Keputusan filter rendah dan batas ekspor CSV dikoreksi. |
+| `README.md` | Baris tabel Phase 9, paragraf ringkasan, tautan `docs/17`. |
+
+### Keputusan
+
+- **Tanpa email.** `profiles` tidak punya kolom email dan `auth.users` tidak
+  terbaca klien; identitas = nama + 8 karakter id. Tidak ada kolom kosong atau
+  email tebakan.
+- **Tanpa pembuatan akun.** RPC hanya mengubah profil yang sudah ada; akun
+  dibuat lewat dashboard Supabase. Tombol tambah pengguna tidak dibuat supaya
+  tidak menjanjikan yang tidak bisa dilakukan.
+- **Audit dibaca dari tabel, bukan RPC baru.** Policy owner-only dan trigger
+  immutable sudah cukup; fungsi baca hanya menambah permukaan review.
+- **Filter stok rendah di klien.** PostgREST tidak bisa membandingkan dua
+  kolom. Service memindai katalog bertahap 1.000 baris (batas 5.000),
+  memfilter `stok > 0 && stok <= batas`, lalu memotong halaman — total dan
+  paginasi tetap benar. Stok `NULL` dan `0` tidak dianggap rendah karena punya
+  filter sendiri.
+- **CSV hanya satu halaman.** Label tombol menyatakan cakupannya; tidak ada
+  ekspor senyap seluruh hasil filter.
+- **Capability lama dipakai ulang.** `users.manage` sudah owner-only; tidak ada
+  capability baru yang perlu disinkronkan ke RLS.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **242/242 lulus** (18 file; 21 tes baru) |
+| `npm run build` | exit 0 (1,92 MB / 474 kB gzip) |
+| `npm run audit:bundle` | 151 berkas, **0 temuan** |
+| `npm run test:db` | tidak dijalankan ulang; tidak ada migrasi baru (terakhir 80/80) |
+
+### Batasan
+
+- Halaman pengguna dan audit belum dibuka dengan sesi owner nyata di hosted;
+  verifikasi masih unit test bentuk query dan pemetaan baris.
+- Tidak ada pembuatan akun, reset kata sandi, undangan email, filter pelaku,
+  atau pencarian teks bebas di audit.
+- Filter stok rendah memindai maksimal 5.000 produk; katalog saat ini 1.360,
+  tetapi katalog jauh lebih besar perlu view/RPC.
+- Ekspor CSV inventaris/audit hanya satu halaman, bukan seluruh hasil filter.
+- Migrasi Phase 5A **masih menunggu approval** untuk preview
+  `ptbllrugrjepdhdhhdkzxn`; UAT hosted, printer/scanner fisik, dan gateway QRIS
+  dinamis tetap tidak tersedia di lingkungan ini.

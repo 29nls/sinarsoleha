@@ -88,6 +88,24 @@ export const APP_MODULES: readonly AppModule[] = [
     available: true,
     description: 'Fitur opsional: printer, scanner, dan gateway QRIS.',
   },
+  {
+    key: 'users',
+    label: 'Pengguna',
+    path: '/users',
+    capability: 'users.manage',
+    phase: 9,
+    available: true,
+    description: 'Nama, peran, dan status aktif profil staf.',
+  },
+  {
+    key: 'audit',
+    label: 'Audit Log',
+    path: '/audit',
+    capability: 'users.manage',
+    phase: 9,
+    available: true,
+    description: 'Riwayat perubahan data yang ditulis server.',
+  },
 ]
 
 export function availableModules(roleCapabilities: (capability: Capability) => boolean): AppModule[] {

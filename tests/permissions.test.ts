@@ -56,6 +56,16 @@ describe('module registry', () => {
     expect(keys('cashier')).not.toContain('stock-opname')
   })
 
+  it('publishes the phase 9 admin pages for owners only', () => {
+    const keys = (role: 'owner' | 'inventory_staff' | 'cashier') =>
+      availableModules((capability) => can(role, capability)).map((mod) => mod.key)
+
+    expect(keys('owner')).toEqual(expect.arrayContaining(['users', 'audit']))
+    expect(keys('cashier')).not.toContain('users')
+    expect(keys('cashier')).not.toContain('audit')
+    expect(keys('inventory_staff')).not.toContain('audit')
+  })
+
   it('never advertises a module without a capability the role holds', () => {
     for (const role of ['owner', 'cashier', 'inventory_staff'] as const) {
       for (const mod of availableModules((capability) => can(role, capability))) {

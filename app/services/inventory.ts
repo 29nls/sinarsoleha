@@ -63,10 +63,92 @@ interface BalanceSelectRow {
   units_of_measure: { label: string; decimal_scale: number } | null
 }
 
+function toBalanceRow(row: BalanceSelectRow): StockBalanceRow {
+  return {
+    id: row.id,
+    sku: row.sku,
+    name: row.name,
+    categoryName: row.categories?.name ?? null,
+    unitLabel: row.units_of_measure?.label ?? '—',
+    decimalScale: row.units_of_measure?.decimal_scale ?? 0,
+    stockOnHand: row.stock_on_hand,
+    stockVersion: Number(row.stock_version),
+    lowStockThreshold: row.low_stock_threshold,
+    isActive: row.is_active,
+    reviewStatus: row.import_review_status,
+  }
+}
+
+/** Rows per request while scanning for the client-side low-stock filter. */
+const LOW_STOCK_SCAN_PAGE = 1000
+/** Upper bound so a filter can never pull the whole catalog repeatedly. */
+export const LOW_STOCK_SCAN_LIMIT = 5000
+
+function isLowStock(row: StockBalanceRow): boolean {
+  return (
+    row.stockOnHand !== null &&
+    row.stockOnHand > 0 &&
+    row.lowStockThreshold !== null &&
+    row.stockOnHand <= row.lowStockThreshold
+  )
+}
+
+/**
+ * "Stok rendah" needs `stock_on_hand <= low_stock_threshold`, which PostgREST
+ * cannot express. The service scans the (bounded) result set in pages, filters
+ * in the browser, and only then slices the requested page — so the row count
+ * and pagination stay truthful instead of filtering just one page.
+ */
+async function listLowStockBalances(
+  client: Client,
+  params: StockBalanceParams,
+): Promise<InventoryListResult<StockBalanceRow>> {
+  const matches: StockBalanceRow[] = []
+  let scanned = 0
+
+  while (scanned < LOW_STOCK_SCAN_LIMIT) {
+    let query = client
+      .from('products')
+      .select(BALANCE_SELECT)
+      .order('sku_normalized', { ascending: true })
+      .order('name', { ascending: true })
+
+    const term = params.search.trim()
+    if (term) {
+      const escaped = escapeLike(term.toLowerCase())
+      query = query.or(
+        [
+          `sku_normalized.ilike.${quoteValue(`%${escaped}%`)}`,
+          `normalized_name.ilike.${quoteValue(`%${escaped}%`)}`,
+        ].join(','),
+      )
+    }
+
+    const from = scanned
+    query = query.range(from, from + LOW_STOCK_SCAN_PAGE - 1)
+
+    const { data, error } = await query.returns<BalanceSelectRow[]>()
+    if (error) fail(error)
+
+    const batch = data ?? []
+    for (const row of batch) {
+      const mapped = toBalanceRow(row)
+      if (isLowStock(mapped)) matches.push(mapped)
+    }
+    scanned += batch.length
+    if (batch.length < LOW_STOCK_SCAN_PAGE) break
+  }
+
+  const start = (params.page - 1) * params.pageSize
+  return { rows: matches.slice(start, start + params.pageSize), total: matches.length }
+}
+
 export async function listStockBalances(
   client: Client,
   params: StockBalanceParams,
 ): Promise<InventoryListResult<StockBalanceRow>> {
+  if (params.state === 'low') return listLowStockBalances(client, params)
+
   let query = client
     .from('products')
     .select(BALANCE_SELECT, { count: 'exact' })
@@ -84,8 +166,8 @@ export async function listStockBalances(
     )
   }
 
-  // PostgREST cannot compare two columns, so "low stock" is not a server
-  // filter. The table highlights those rows instead.
+  // PostgREST cannot compare two columns, so "low stock" is scanned and
+  // filtered above rather than expressed as a server filter.
   if (params.state === 'unknown') query = query.is('stock_on_hand', null)
   if (params.state === 'negative') query = query.lt('stock_on_hand', 0)
   if (params.state === 'empty') query = query.eq('stock_on_hand', 0)
@@ -97,19 +179,7 @@ export async function listStockBalances(
   if (error) fail(error)
 
   return {
-    rows: (data ?? []).map((row) => ({
-      id: row.id,
-      sku: row.sku,
-      name: row.name,
-      categoryName: row.categories?.name ?? null,
-      unitLabel: row.units_of_measure?.label ?? '—',
-      decimalScale: row.units_of_measure?.decimal_scale ?? 0,
-      stockOnHand: row.stock_on_hand,
-      stockVersion: Number(row.stock_version),
-      lowStockThreshold: row.low_stock_threshold,
-      isActive: row.is_active,
-      reviewStatus: row.import_review_status,
-    })),
+    rows: (data ?? []).map(toBalanceRow),
     total: count ?? 0,
   }
 }

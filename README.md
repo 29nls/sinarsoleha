@@ -15,6 +15,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 6 | Laporan penjualan, per produk, exception data, ekspor CSV | **Selesai & diuji lokal** |
 | 7 | Plugin opsional: printer, scanner, gateway QRIS, halaman pengaturan | **Selesai & diuji lokal** |
 | 8 | Keamanan & UAT | **Audit selesai; UAT hosted menunggu migrasi 5A** — lihat `docs/16-security-uat.md` |
+| 9 | Halaman pengguna, audit log, filter stok rendah, ekspor CSV | **Selesai & diuji lokal** — lihat `docs/17-users-audit.md` |
 
 Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal serta hosted; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **lulus** pada Phase 4D (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`. Produksi belum diterapkan.
 
@@ -37,6 +38,8 @@ Phase 7 menambahkan tiga integrasi opsional di balik satu kontrak adapter: print
 Phase 8 menutup dengan audit keamanan yang dapat diulang dan checklist UAT per peran: `npm run audit:bundle` memindai output build untuk service-role/secret key, dan grup I pada `npm run test:db` mengunci grant tabel, RLS 24/24, `SECURITY DEFINER` + `search_path=""`, serta default privilege. Temuan residual (EXECUTE bawaan pada fungsi trigger) terdokumentasi dan tidak dapat dieksploitasi karena `anon` tidak punya USAGE pada schema `private`. UAT hosted belum dijalankan karena migrasi 5A menunggu approval — lihat `docs/16-security-uat.md`.
 
 Phase 6 menambah halaman laporan owner-only: ringkasan harian dan rincian pendapatan per nota (`/reports`), penjualan per produk dari snapshot baris transaksi (`/reports/products`), serta exception data katalog dan transaksi legacy (`/reports/exceptions`). Tidak ada tabel agregat, RPC, atau migrasi baru — baris dibaca dengan RLS lalu diringkas di klien, dibatasi 5000 baris per periode dan ditandai bila terpotong. CSV dibuat di browser dengan BOM UTF-8. Margin/laba kotor tidak disajikan karena harga beli historis belum lengkap (PRD §5.5). Rincian ada di `docs/14-reports.md`.
+
+Phase 9 menambah dua halaman administrasi owner-only: `/users` untuk mengubah nama, peran, dan status aktif profil staf lewat RPC `admin_upsert_profile` (dengan peringatan owner aktif terakhir), dan `/audit` untuk membaca audit log append-only dengan filter aksi/entitas/tanggal. Email tidak ditampilkan karena `profiles` tidak menyimpannya dan `auth.users` tidak terbaca klien; halaman ini juga tidak membuat akun. Phase 9 sekaligus menutup dua sisa Phase 5C/6: filter “stok rendah” (`stok > 0 && stok ≤ batas`) yang dihitung di klien karena PostgREST tidak bisa membandingkan dua kolom, serta ekspor CSV satu halaman di inventaris, selisih stok, dan audit. Tidak ada migrasi baru — lihat `docs/17-users-audit.md`.
 
 ## Menjalankan
 
@@ -100,4 +103,6 @@ types/          tipe database hasil generate
 - `docs/13-inventory-ui.md` — UI inventaris baca-saja: saldo, pergerakan, selisih (Phase 5C)
 - `docs/14-reports.md` — laporan penjualan, per produk, exception data, ekspor CSV (Phase 6)
 - `docs/15-plugins-settings.md` — kontrak adapter, printer/scanner/QRIS, sanitasi konfigurasi publik, halaman pengaturan (Phase 7)
+- `docs/16-security-uat.md` — audit keamanan, model ancaman, matriks peran, checklist UAT (Phase 8)
+- `docs/17-users-audit.md` — halaman pengguna, audit log, filter stok rendah, ekspor CSV (Phase 9)
 - `docs/PROGRESS.md` — log pengembangan

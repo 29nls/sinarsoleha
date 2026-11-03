@@ -46,13 +46,14 @@ export function isInboundMovement(row: { quantityDelta: number }): boolean {
 }
 
 /**
- * Filters that PostgREST can express against a single column.
+ * Filters that PostgREST can express against a single column, plus `low`.
  *
  * "Stok rendah" compares `stock_on_hand` with `low_stock_threshold`, which the
- * REST API cannot do column-to-column, so it is only a row highlight here and
- * belongs to the Phase 6 report instead.
+ * REST API cannot do column-to-column. The service scans the bounded catalog
+ * once and filters in the browser, so totals stay correct; see
+ * `listStockBalances`.
  */
-export const STOCK_STATES = ['all', 'unknown', 'negative', 'empty'] as const
+export const STOCK_STATES = ['all', 'unknown', 'negative', 'empty', 'low'] as const
 
 export type StockStateFilter = (typeof STOCK_STATES)[number]
 
@@ -61,6 +62,7 @@ export const STOCK_STATE_FILTER_LABELS: Record<StockStateFilter, string> = {
   unknown: 'Stok belum diketahui',
   negative: 'Stok negatif',
   empty: 'Stok habis',
+  low: 'Stok rendah (≤ batas)',
 }
 
 // ---------------------------------------------------------------------------

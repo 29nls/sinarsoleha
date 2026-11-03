@@ -1,8 +1,13 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useSupabaseClient } from '~/composables/useSupabase'
 import { useStockBalances } from '~/composables/useInventory'
 import type { StockBalanceRow } from '~/types/inventory'
+import { STOCK_STATE_FILTER_LABELS } from '~/types/inventory'
+import { toCsv } from '~/types/reports'
+import { downloadCsv } from '~/utils/download'
+import { stockState, stockStateLabel } from '~/utils/catalog'
 import StockBalanceFilters from '~/components/inventory/StockBalanceFilters.vue'
 import StockBalanceTable from '~/components/inventory/StockBalanceTable.vue'
 import InventoryTabs from '~/components/inventory/InventoryTabs.vue'
@@ -39,6 +44,29 @@ const {
 function openHistory(row: StockBalanceRow): void {
   void navigateTo({ path: '/inventory/movements', query: { product: row.sku } })
 }
+
+/**
+ * Exports the rows currently on screen, so the file matches what the filter
+ * shows. A whole-catalog export belongs to the stock report, not this table.
+ */
+function exportBalances(): void {
+  const csv = toCsv(
+    ['SKU', 'Nama barang', 'Kategori', 'Stok', 'Satuan', 'Batas rendah', 'Status', 'Aktif'],
+    rows.value.map((row) => [
+      row.sku,
+      row.name,
+      row.categoryName,
+      row.stockOnHand,
+      row.unitLabel,
+      row.lowStockThreshold,
+      stockStateLabel(stockState(row.stockOnHand, row.lowStockThreshold)),
+      row.isActive ? 'Ya' : 'Tidak',
+    ]),
+  )
+  downloadCsv(`saldo-stok-halaman-${page.value}.csv`, csv)
+}
+
+const filterLabel = computed(() => STOCK_STATE_FILTER_LABELS[filters.state])
 </script>
 
 <template>
@@ -66,9 +94,19 @@ function openHistory(row: StockBalanceRow): void {
     <section class="panel" aria-labelledby="balance-list-title">
       <div class="panel-head">
         <h2 id="balance-list-title" class="panel-title">Saldo stok</h2>
-        <span class="num text-[11px] text-[var(--color-muted)]">
-          {{ rangeStart }}–{{ rangeEnd }} dari {{ total }}
-        </span>
+        <div class="flex items-center gap-2">
+          <span class="num text-[11px] text-[var(--color-muted)]">
+            {{ rangeStart }}–{{ rangeEnd }} dari {{ total }}
+          </span>
+          <button
+            class="btn text-[11px]"
+            type="button"
+            :disabled="loading || rows.length === 0"
+            @click="exportBalances"
+          >
+            Ekspor halaman (CSV)
+          </button>
+        </div>
       </div>
 
       <StockBalanceTable :rows="rows" :loading="loading" :error="error" @open="openHistory" />
@@ -91,7 +129,8 @@ function openHistory(row: StockBalanceRow): void {
 
     <p class="text-[11px] text-[var(--color-muted)]">
       Stok bertanda “—” berarti saldo belum pernah diketahui, bukan nol. Catat lewat Stok Opname
-      agar menjadi saldo awal.
+      agar menjadi saldo awal. Filter “{{ filterLabel }}” dihitung di browser karena batas rendah
+      disimpan per produk; angka pada kartu tetap jumlah baris yang cocok, bukan satu halaman.
     </p>
   </div>
 </template>
