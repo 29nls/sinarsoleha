@@ -140,7 +140,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Parsial (sesuai lingkup) | kontrak `complete_sale`, `void_sale`, `post_stock_opname`, `adjust_stock` di `docs/04-rpc-contracts.md`; implementasi Fase 4/5 |
+| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A (lokal, 42/42 tes); `post_stock_opname`/`adjust_stock` masih Phase 5 |
 | DB-04 | Selesai | trigger `updated_at` |
 | DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |

@@ -10,11 +10,14 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
 | 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1 baris review** |
-| 4–8 | Kasir, inventaris, laporan, plugin, UAT | Belum |
+| 4 | Mesin transaksi (4A), UI kasir (4B) | **4A selesai lokal; 4B & hosted belum** |
+| 5–8 | Inventaris, laporan, plugin, UAT | Belum |
 
-Katalog produk sudah aktif. Modul transaksi, inventaris, dan laporan belum diimplementasikan. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan hasil hosted ada di `docs/03-database-implementation.md`; arsitektur katalog ada di `docs/05-product-catalog.md`.
+Katalog produk sudah aktif. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal pada Phase 4A; UI kasir, verifikasi hosted, inventaris, dan laporan belum. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan hasil hosted ada di `docs/03-database-implementation.md`; arsitektur katalog ada di `docs/05-product-catalog.md`.
 
 Impor master Phase 3B sudah dijalankan ke preview pada 3 November 2026: 1.360 produk masuk dengan stok `NULL`, 1 baris review (`WAL-W1303`), 0 ditolak. Rekonsiliasi dan sisa pekerjaan ada di `docs/06-product-master-import.md`.
+
+Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idempotensi, snapshot harga, dan ledger stok; 42/42 tes database lulus. Migrasi belum diterapkan ke preview dan uji konkurensi dua sesi belum dijalankan — lihat `docs/07-transaction-engine.md`.
 
 ## Menjalankan
 
@@ -67,4 +70,5 @@ types/          tipe database hasil generate
 - `docs/04-rpc-contracts.md` — kontrak RPC mutasi Fase 4/5
 - `docs/05-product-catalog.md` — arsitektur, izin, dan batasan katalog Phase 3A
 - `docs/06-product-master-import.md` — staging, RPC, impor, dan rekonsiliasi Phase 3B
+- `docs/07-transaction-engine.md` — mesin transaksi, idempotensi, penguncian, dan void Phase 4A
 - `docs/PROGRESS.md` — log pengembangan

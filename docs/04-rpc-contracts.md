@@ -1,6 +1,6 @@
 # Kontrak RPC Mutasi — Fase 4/5
 
-Fungsi berikut **belum diimplementasikan** pada Fase 2. Dokumen ini mengikat signature, validasi, dan urutan operasi agar Fase 4 (kasir) dan Fase 5 (inventaris) tidak menemukan kontrak baru. Semua fungsi berada di schema `private`, dibungkus wrapper `public` dengan grant hanya ke `authenticated`, dan memakai `search_path = ''`.
+`complete_sale` dan `void_sale` **sudah diimplementasikan** pada Phase 4A (`20261103110000_transaction_engine.sql`). `post_stock_opname` dan `adjust_stock` masih kontrak untuk Phase 5. Dokumen ini mengikat signature, validasi, dan urutan operasi. Semua fungsi berada di schema `private`, dibungkus wrapper `public` dengan grant hanya ke `authenticated`, dan memakai `search_path = ''`.
 
 ## Aturan umum
 
@@ -12,6 +12,8 @@ Fungsi berikut **belum diimplementasikan** pada Fase 2. Dokumen ini mengikat sig
 - Idempotency key unik; retry harus mengembalikan hasil yang sama, bukan membuat nota baru.
 
 ## 1. `public.complete_sale(p_payload jsonb) returns jsonb`
+
+**Status: diimplementasikan Phase 4A.** Detail dan batasan di `docs/07-transaction-engine.md`.
 
 Payload:
 
@@ -38,15 +40,32 @@ Urutan:
 6. Insert header, item snapshot (SKU/nama/satuan/harga), payments `confirmed`, movements `sale_out` dengan `actor_id`, `quantity_before`, `quantity_after`, `idempotency_key` movement.
 7. Update `products.stock_on_hand`, `stock_version + 1`, `updated_by`.
 8. Deferred trigger memeriksa Σ pembayaran = `grand_total` saat COMMIT.
-9. Kembalikan `{ transaction_id, receipt_no, grand_total }`; audit `sale.complete`.
+9. Kembalikan `{ transaction_id, receipt_no, business_date, subtotal, discount_amount, grand_total, status, already_processed }`; audit `sale.complete`.
+
+Catatan implementasi 4A:
+
+- Fingerprint permintaan disimpan di `transactions.request_fingerprint`; kunci sama dengan keranjang berbeda ditolak.
+- `business_date` tidak boleh lebih dari satu hari setelah tanggal server (toleransi WIB).
+- Produk duplikat dalam satu keranjang ditolak; klien wajib menggabungkan quantity.
+- Diskon selalu 0 karena belum ada kebijakan owner; nilai > 0 ditolak `DISCOUNT_NOT_CONFIGURED`.
+- Retry dengan kunci dan payload sama mengembalikan nota lama dengan `already_processed = true`.
 
 ## 2. `public.void_sale(p_transaction_id uuid, p_reason text) returns jsonb`
 
-- Hanya `owner`; alasan wajib.
+**Status: diimplementasikan Phase 4A.**
+
+- Hanya `owner`; alasan wajib 1–500 karakter.
 - Kunci transaksi; hanya status `completed`; jika sudah `voided`, kembalikan hasil lama (idempoten).
 - Untuk setiap item, buat movement `void_reversal` (delta = +quantity, referensi transaksi) dan naikkan saldo/versi.
 - Set `status = 'voided'`, `voided_at/by/reason`; jangan menghapus header, item, payment, atau movement.
 - Audit `sale.void`; kembalikan nota yang diperbarui.
+
+Catatan implementasi 4A:
+
+- Item tanpa `product_id` menolak void (`VOID_ITEM_WITHOUT_PRODUCT`) agar stok tidak dipulihkan salah.
+- Pembayaran tidak diubah dan tidak diklaim direfund; refund adalah keputusan bisnis terpisah.
+- Void ganda mengembalikan `already_processed = true` tanpa menulis movement baru.
+- Movement `void_reversal` memakai idempotency key turunan dari transaksi dan produk.
 
 ## 3. `public.post_stock_opname(p_opname_id uuid) returns jsonb`
 

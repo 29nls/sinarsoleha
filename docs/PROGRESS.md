@@ -211,4 +211,47 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 
 1. Putuskan harga baris 1305, lalu impor baris itu bila sudah benar.
 2. Bersihkan 5 produk `HOST-*` dan 5 kategori uji Phase 2B, lalu tinjau 1.507 isu harga/stok.
-3. Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.
+3. Phase 5 — opname dan Realtime.
+
+## 3 November 2026 — Phase 4A (mesin transaksi)
+
+### Lingkup
+
+- `private.complete_sale` dan `private.void_sale` diimplementasikan, dengan wrapper `public` hanya untuk `authenticated`.
+- Harga, diskon, total, nomor nota, stok, dan kasir ditentukan database; payload browser hanya item, quantity, pembayaran, tanggal, dan idempotency key.
+- Semua produk dikunci `FOR UPDATE` urut `product_id` sebelum tulisan pertama; stok tidak pernah negatif.
+- Idempotensi memakai `transactions.idempotency_key` + fingerprint `request_fingerprint`; kunci sama dengan keranjang berbeda ditolak.
+- Diskon > 0 ditolak sampai owner menetapkan kebijakan; pembayaran cash/QRIS manual/split divalidasi terhadap total.
+- Void owner-only memulihkan stok satu kali lewat `void_reversal`, tanpa menghapus header, item, pembayaran, atau audit.
+
+### File dibuat/dimodifikasi
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi | `supabase/migrations/20261103110000_transaction_engine.sql` |
+| Tes | `scripts/db-test.mjs` — 10 tes transaksi baru |
+| Tipe | `types/database.generated.ts` — 43.464 byte |
+| Dokumentasi | `docs/07-transaction-engine.md`, `docs/04-rpc-contracts.md`, `docs/03-database-implementation.md`, `README.md` |
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | 14 migrasi apply bersih; **42/42 lulus** (32 lama + 10 transaksi) |
+| `npm test` | 5 file, **43/43 lulus** |
+| `npm run gen:types` | 43.464 byte |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (14,9 dtk) |
+
+### Batasan
+
+- Migrasi 4A belum diterapkan ke preview; tidak ada kredensial DDL di lingkungan ini.
+- Uji konkurensi dua sesi belum dijalankan: PGlite memakai satu koneksi, jadi hanya oversell sekuensial yang teruji. Jaminan paralel baru berasal dari desain `FOR UPDATE`.
+- Tes hosted belum dijalankan; produk berstok harus di-seed lewat SQL karena belum ada RPC opname/adjustment.
+- Diskon, refund, jendela void, jam tutup toko, dan bukti QRIS masih keputusan bisnis terbuka.
+
+### Tugas berikutnya
+
+1. Terapkan migrasi 4A ke preview dan seed produk `TEST-*` berstok lewat SQL owner.
+2. Jalankan uji konkurensi dua sesi dan tes hosted, lalu perbarui hasilnya.
+3. Phase 4B — UI kasir; Phase 5 — opname dan Realtime.

@@ -567,14 +567,14 @@ isOneToOne: false
                   ]
                 },"transactions": {
                   Row: {
-                    "business_date": string,"cashier_id": string,"completed_at": string,"created_at": string,"customer_id": string | null,"discount_amount": number,"grand_total": number,"id": string,"idempotency_key": string | null,"legacy_transaction_id": string | null,"note": string | null,"receipt_no": string,"reconciliation_status": string,"status": string,"subtotal": number,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
+                    "business_date": string,"cashier_id": string,"completed_at": string,"created_at": string,"customer_id": string | null,"discount_amount": number,"grand_total": number,"id": string,"idempotency_key": string | null,"legacy_transaction_id": string | null,"note": string | null,"receipt_no": string,"reconciliation_status": string,"request_fingerprint": string | null,"status": string,"subtotal": number,"void_reason": string | null,"voided_at": string | null,"voided_by": string | null
                   }
                   ComputedFields: never
                   Insert: {
-                    "business_date": string,"cashier_id": string,"completed_at"?: string,"created_at"?: string,"customer_id"?: string | null,"discount_amount"?: number,"grand_total": number,"id"?: string,"idempotency_key"?: string | null,"legacy_transaction_id"?: string | null,"note"?: string | null,"receipt_no": string,"reconciliation_status"?: string,"status"?: string,"subtotal": number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                    "business_date": string,"cashier_id": string,"completed_at"?: string,"created_at"?: string,"customer_id"?: string | null,"discount_amount"?: number,"grand_total": number,"id"?: string,"idempotency_key"?: string | null,"legacy_transaction_id"?: string | null,"note"?: string | null,"receipt_no": string,"reconciliation_status"?: string,"request_fingerprint"?: string | null,"status"?: string,"subtotal": number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
                   }
                   Update: {
-                    "business_date"?: string,"cashier_id"?: string,"completed_at"?: string,"created_at"?: string,"customer_id"?: string | null,"discount_amount"?: number,"grand_total"?: number,"id"?: string,"idempotency_key"?: string | null,"legacy_transaction_id"?: string | null,"note"?: string | null,"receipt_no"?: string,"reconciliation_status"?: string,"status"?: string,"subtotal"?: number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
+                    "business_date"?: string,"cashier_id"?: string,"completed_at"?: string,"created_at"?: string,"customer_id"?: string | null,"discount_amount"?: number,"grand_total"?: number,"id"?: string,"idempotency_key"?: string | null,"legacy_transaction_id"?: string | null,"note"?: string | null,"receipt_no"?: string,"reconciliation_status"?: string,"request_fingerprint"?: string | null,"status"?: string,"subtotal"?: number,"void_reason"?: string | null,"voided_at"?: string | null,"voided_by"?: string | null
                   }
                   Relationships: [
                     {
@@ -623,6 +623,9 @@ isOneToOne: false
 "begin_product_import":
 { Args: { "p_payload": Json }; Returns: Json
                            },
+"complete_sale":
+{ Args: { "p_payload": Json }; Returns: Json
+                           },
 "finish_product_import":
 { Args: { "p_run_id": string,"p_status": string }; Returns: Json
                            },
@@ -643,6 +646,9 @@ isOneToOne: false
                            },
 "upsert_product":
 { Args: { "p_payload": Json }; Returns: Json
+                           },
+"void_sale":
+{ Args: { "p_reason": string,"p_transaction_id": string }; Returns: Json
                            }
           }
           Enums: {

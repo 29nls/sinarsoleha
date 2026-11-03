@@ -14,6 +14,7 @@
 import { PGlite } from '@electric-sql/pglite'
 import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { readFile, readdir } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import process from 'node:process'
 
@@ -81,6 +82,28 @@ async function asRoleCommit(role, userId, fn) {
   } catch (error) {
     await db.exec('rollback').catch(() => {})
     throw error
+  }
+}
+
+async function saleProduct(sku, options = {}) {
+  const { price = 5000, stock = 10, active = true } = options
+  const result = await db.query(
+    `insert into public.products (sku, name, unit_id, sale_price, stock_on_hand, is_active)
+     values ($1, $2, $3, $4, $5, $6)
+     returning id`,
+    [sku, `Produk ${sku}`, unitId, price, stock, active],
+  )
+  return result.rows[0].id
+}
+
+function cashPayload(productId, quantity, total, overrides = {}) {
+  return {
+    idempotency_key: randomUUID(),
+    business_date: '2026-11-02',
+    discount_amount: 0,
+    items: [{ product_id: productId, quantity }],
+    payments: [{ method: 'cash', amount_applied: total, cash_received: total, cash_change: 0 }],
+    ...overrides,
   }
 }
 
@@ -940,6 +963,434 @@ async function runTests() {
         ]),
       )
     })
+  })
+
+  await test('cashier completes a sale with database price and stock', async () => {
+    const productId = await saleProduct('SALE-001', { stock: 10, price: 5000 })
+    const key = randomUUID()
+    const payload = cashPayload(productId, 2, 10000, { idempotency_key: key })
+    payload.payments = [{ method: 'cash', amount_applied: 10000, cash_received: 20000, cash_change: 10000 }]
+
+    let sale
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [JSON.stringify(payload)])
+      sale = result.rows[0].r
+    })
+
+    assert(sale.status === 'completed', 'sale was not completed')
+    assert(/^SS-20261102-[0-9]{4}$/.test(sale.receipt_no), `unexpected receipt ${sale.receipt_no}`)
+    assert(Number(sale.subtotal) === 10000, 'subtotal is wrong')
+    assert(Number(sale.grand_total) === 10000, 'grand total is wrong')
+    assert(sale.already_processed === false, 'first sale reported already_processed')
+
+    const product = await db.query('select stock_on_hand, stock_version from public.products where id = $1', [productId])
+    assert(Number(product.rows[0].stock_on_hand) === 8, 'stock was not decremented')
+    assert(Number(product.rows[0].stock_version) === 1, 'stock_version was not incremented')
+
+    const item = await db.query(
+      `select sku_snapshot, product_name_snapshot, unit_label_snapshot, quantity, unit_price,
+              line_subtotal, line_discount_amount, line_total
+         from public.transaction_items where transaction_id = $1`,
+      [sale.transaction_id],
+    )
+    assert(item.rows.length === 1, 'item snapshot is missing')
+    assert(item.rows[0].sku_snapshot === 'SALE-001', 'SKU snapshot is wrong')
+    assert(item.rows[0].unit_label_snapshot === 'Pcs', 'unit label snapshot is wrong')
+    assert(Number(item.rows[0].quantity) === 2, 'quantity snapshot is wrong')
+    assert(Number(item.rows[0].unit_price) === 5000, 'price was not taken from the database')
+    assert(Number(item.rows[0].line_subtotal) === 10000, 'line subtotal is wrong')
+    assert(Number(item.rows[0].line_total) === 10000, 'line total is wrong')
+    assert(Number(item.rows[0].line_discount_amount) === 0, 'line discount is not zero')
+
+    const movement = await db.query(
+      `select movement_type, quantity_delta, quantity_before, quantity_after, actor_id, idempotency_key
+         from public.stock_movements where transaction_id = $1`,
+      [sale.transaction_id],
+    )
+    assert(movement.rows.length === 1, 'sale_out movement is missing')
+    assert(movement.rows[0].movement_type === 'sale_out', 'movement type is wrong')
+    assert(Number(movement.rows[0].quantity_delta) === -2, 'movement delta is wrong')
+    assert(Number(movement.rows[0].quantity_before) === 10, 'quantity_before is wrong')
+    assert(Number(movement.rows[0].quantity_after) === 8, 'quantity_after is wrong')
+    assert(movement.rows[0].actor_id === CASHIER, 'movement actor is not the cashier')
+    assert(movement.rows[0].idempotency_key, 'movement idempotency key is missing')
+
+    const payment = await db.query(
+      'select method, amount_applied, cash_received, cash_change, payment_status from public.payments where transaction_id = $1',
+      [sale.transaction_id],
+    )
+    assert(payment.rows[0].payment_status === 'confirmed', 'payment is not confirmed')
+    assert(Number(payment.rows[0].cash_change) === 10000, 'cash change is wrong')
+
+    const audit = await db.query(
+      `select count(*)::int as n from public.audit_logs
+        where action_key = 'sale.complete' and entity_id = $1`,
+      [sale.transaction_id],
+    )
+    assert(audit.rows[0].n === 1, 'sale.complete was not audited')
+  })
+
+  await test('the same idempotency key returns the same sale', async () => {
+    const productId = await saleProduct('SALE-002', { stock: 4, price: 5000 })
+    const key = randomUUID()
+    const payload = cashPayload(productId, 1, 5000, { idempotency_key: key })
+
+    let first
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [JSON.stringify(payload)])
+      first = result.rows[0].r
+    })
+
+    let second
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [JSON.stringify(payload)])
+      second = result.rows[0].r
+    })
+
+    assert(second.transaction_id === first.transaction_id, 'retry created a different sale')
+    assert(second.receipt_no === first.receipt_no, 'retry returned a different receipt')
+    assert(second.already_processed === true, 'retry was not reported as idempotent')
+
+    const stock = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(stock.rows[0].stock_on_hand) === 3, 'retry decremented stock twice')
+    const tx = await db.query('select count(*)::int as n from public.transactions where idempotency_key = $1', [key])
+    assert(tx.rows[0].n === 1, 'retry created a duplicate transaction')
+    const movements = await db.query('select count(*)::int as n from public.stock_movements where transaction_id = $1', [first.transaction_id])
+    assert(movements.rows[0].n === 1, 'retry created a duplicate movement')
+    const payments = await db.query('select count(*)::int as n from public.payments where transaction_id = $1', [first.transaction_id])
+    assert(payments.rows[0].n === 1, 'retry created a duplicate payment')
+  })
+
+  await test('reusing a key with a different cart is rejected', async () => {
+    const productId = await saleProduct('SALE-003', { stock: 5, price: 5000 })
+    const key = randomUUID()
+    const first = cashPayload(productId, 1, 5000, { idempotency_key: key })
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(first)])
+    })
+
+    const changed = cashPayload(productId, 2, 10000, { idempotency_key: key })
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(changed)]),
+      )
+    })
+
+    const stock = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(stock.rows[0].stock_on_hand) === 4, 'rejected reuse changed stock')
+    const tx = await db.query('select count(*)::int as n from public.transactions where idempotency_key = $1', [key])
+    assert(tx.rows[0].n === 1, 'rejected reuse created another transaction')
+  })
+
+  await test('checkout rejects malformed carts and discounts', async () => {
+    const productId = await saleProduct('SALE-004', { stock: 5, price: 5000 })
+    const base = cashPayload(productId, 1, 5000)
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify({ ...base, items: [] })]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify({ ...base, items: [{ product_id: productId, quantity: 0 }] }),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify({ ...base, items: [{ product_id: productId, quantity: '1.2345' }] }),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify({
+            ...base,
+            items: [
+              { product_id: productId, quantity: 1 },
+              { product_id: productId, quantity: 1 },
+            ],
+            payments: [{ method: 'cash', amount_applied: 10000, cash_received: 10000, cash_change: 0 }],
+          }),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify({ ...base, payments: [] })]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify({ ...base, payments: [{ method: 'transfer', amount_applied: 5000 }] }),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify({ ...base, discount_amount: 100 })]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify({ ...base, discount_amount: -1 })]),
+      )
+      await expectError('22023', () => {
+        const { business_date: _ignored, ...withoutDate } = base
+        return db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(withoutDate)])
+      })
+      await expectError('P0002', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify({ ...base, items: [{ product_id: randomUUID(), quantity: 1 }] }),
+        ]),
+      )
+    })
+
+    const stock = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(stock.rows[0].stock_on_hand) === 5, 'rejected carts changed stock')
+  })
+
+  await test('unsellable products and insufficient stock are rejected', async () => {
+    const noStock = await saleProduct('SALE-005A', { stock: null, price: 5000 })
+    const noPrice = await saleProduct('SALE-005B', { stock: 5, price: null })
+    const inactive = await saleProduct('SALE-005C', { stock: 5, price: 5000, active: false })
+    const lowStock = await saleProduct('SALE-005D', { stock: 1, price: 5000 })
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(noStock, 1, 5000))]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(noPrice, 1, 5000))]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(inactive, 1, 5000))]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(lowStock, 2, 10000))]),
+      )
+    })
+
+    const stock = await db.query('select stock_on_hand, stock_version from public.products where id = $1', [lowStock])
+    assert(Number(stock.rows[0].stock_on_hand) === 1, 'failed sale changed stock')
+    assert(Number(stock.rows[0].stock_version) === 0, 'failed sale changed stock_version')
+    const movements = await db.query('select count(*)::int as n from public.stock_movements where product_id = $1', [lowStock])
+    assert(movements.rows[0].n === 0, 'failed sale wrote a movement')
+  })
+
+  await test('payment arithmetic, cash change and QRIS are enforced', async () => {
+    const cashProduct = await saleProduct('SALE-006A', { stock: 5, price: 5000 })
+    const qrisProduct = await saleProduct('SALE-006B', { stock: 5, price: 5000 })
+    const splitProduct = await saleProduct('SALE-006C', { stock: 5, price: 5000 })
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('23514', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify(cashPayload(cashProduct, 1, 5000, {
+            payments: [{ method: 'cash', amount_applied: 4000, cash_received: 4000, cash_change: 0 }],
+          })),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify(cashPayload(cashProduct, 1, 5000, {
+            payments: [{ method: 'cash', amount_applied: 5000, cash_received: 10000, cash_change: 0 }],
+          })),
+        ]),
+      )
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [
+          JSON.stringify(cashPayload(qrisProduct, 1, 5000, {
+            payments: [{ method: 'qris', amount_applied: 5000, cash_received: 5000, cash_change: 0 }],
+          })),
+        ]),
+      )
+
+      const qris = await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(qrisProduct, 1, 5000, {
+          payments: [{ method: 'qris', amount_applied: 5000 }],
+        })),
+      ])
+      assert(qris.rows[0].r.status === 'completed', 'QRIS sale was rejected')
+
+      const split = await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(splitProduct, 1, 5000, {
+          payments: [
+            { method: 'cash', amount_applied: 2000, cash_received: 2000, cash_change: 0 },
+            { method: 'qris', amount_applied: 3000 },
+          ],
+        })),
+      ])
+      assert(split.rows[0].r.status === 'completed', 'split payment was rejected')
+    })
+
+    const qrisPayment = await db.query(
+      `select p.method, p.cash_received, p.cash_change from public.payments p
+        join public.transactions t on t.id = p.transaction_id
+       where t.business_date = '2026-11-02' and p.method = 'qris' order by p.created_at desc limit 1`,
+    )
+    assert(qrisPayment.rows.length === 1, 'QRIS payment row is missing')
+    assert(qrisPayment.rows[0].cash_received === null, 'QRIS payment stored cash_received')
+    assert(Number(qrisPayment.rows[0].cash_change) === 0, 'QRIS payment stored cash_change')
+
+    const cashStock = await db.query('select stock_on_hand from public.products where id = $1', [cashProduct])
+    assert(Number(cashStock.rows[0].stock_on_hand) === 5, 'unbalanced sale changed stock')
+  })
+
+  await test('only active owners and cashiers can complete sales', async () => {
+    const productId = await saleProduct('SALE-007', { stock: 10, price: 5000 })
+
+    await asRoleCommit('authenticated', WAREHOUSE, async () => {
+      await expectError('42501', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(productId, 1, 5000))]),
+      )
+    })
+    await asRoleCommit('authenticated', INACTIVE, async () => {
+      await expectError('42501', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(productId, 1, 5000))]),
+      )
+    })
+    await asRoleCommit('anon', null, async () => {
+      await expectError('42501', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(cashPayload(productId, 1, 5000))]),
+      )
+    })
+
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 1, 5000)),
+      ])
+      assert(result.rows[0].r.status === 'completed', 'owner could not complete a sale')
+    })
+  })
+
+  await test('owner void restores stock exactly once', async () => {
+    const productId = await saleProduct('SALE-008', { stock: 10, price: 5000 })
+    let sale
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 3, 15000)),
+      ])
+      sale = result.rows[0].r
+    })
+
+    const afterSale = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(afterSale.rows[0].stock_on_hand) === 7, 'sale did not decrement stock')
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('42501', () =>
+        db.query('select public.void_sale($1, $2)', [sale.transaction_id, 'Kasir tidak boleh']),
+      )
+    })
+    await asRoleCommit('authenticated', OWNER, async () => {
+      await expectError('22023', () =>
+        db.query('select public.void_sale($1, $2)', [sale.transaction_id, '   ']),
+      )
+    })
+
+    let voided
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query('select public.void_sale($1, $2) as r', [
+        sale.transaction_id,
+        'Salah input kasir',
+      ])
+      voided = result.rows[0].r
+    })
+    assert(voided.status === 'voided', 'transaction was not voided')
+    assert(voided.already_processed === false, 'first void reported already_processed')
+    assert(voided.restored_items === 1, 'void did not restore the sold item')
+
+    const restored = await db.query('select stock_on_hand, stock_version from public.products where id = $1', [productId])
+    assert(Number(restored.rows[0].stock_on_hand) === 10, 'void did not restore stock')
+    assert(Number(restored.rows[0].stock_version) === 2, 'void did not bump stock_version')
+
+    const reversals = await db.query(
+      `select quantity_delta, actor_id from public.stock_movements
+        where transaction_id = $1 and movement_type = 'void_reversal'`,
+      [sale.transaction_id],
+    )
+    assert(reversals.rows.length === 1, 'void_reversal was not written exactly once')
+    assert(Number(reversals.rows[0].quantity_delta) === 3, 'void_reversal delta is wrong')
+    assert(reversals.rows[0].actor_id === OWNER, 'void_reversal actor is not the owner')
+
+    let again
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query('select public.void_sale($1, $2) as r', [
+        sale.transaction_id,
+        'Salah input kasir',
+      ])
+      again = result.rows[0].r
+    })
+    assert(again.already_processed === true, 'second void was not idempotent')
+    assert(again.restored_items === 0, 'second void restored stock again')
+
+    const stockAfter = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(stockAfter.rows[0].stock_on_hand) === 10, 'second void changed stock')
+    const reversalCount = await db.query(
+      `select count(*)::int as n from public.stock_movements
+        where transaction_id = $1 and movement_type = 'void_reversal'`,
+      [sale.transaction_id],
+    )
+    assert(reversalCount.rows[0].n === 1, 'duplicate void_reversal exists')
+
+    const tx = await db.query(
+      'select status, voided_by, void_reason from public.transactions where id = $1',
+      [sale.transaction_id],
+    )
+    assert(tx.rows[0].status === 'voided', 'transaction status is not voided')
+    assert(tx.rows[0].voided_by === OWNER, 'voided_by is wrong')
+    assert(tx.rows[0].void_reason === 'Salah input kasir', 'void_reason is wrong')
+
+    const items = await db.query('select count(*)::int as n from public.transaction_items where transaction_id = $1', [sale.transaction_id])
+    assert(items.rows[0].n === 1, 'void deleted transaction items')
+    const payments = await db.query('select count(*)::int as n from public.payments where transaction_id = $1', [sale.transaction_id])
+    assert(payments.rows[0].n === 1, 'void deleted payment history')
+    const audit = await db.query(
+      `select count(*)::int as n from public.audit_logs
+        where action_key = 'sale.void' and entity_id = $1`,
+      [sale.transaction_id],
+    )
+    assert(audit.rows[0].n === 1, 'sale.void was not audited')
+  })
+
+  await test('a second sale cannot oversell remaining stock', async () => {
+    const productId = await saleProduct('SALE-009', { stock: 1, price: 1000 })
+    let first
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      const result = await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 1, 1000)),
+      ])
+      first = result.rows[0].r
+    })
+
+    const secondPayload = cashPayload(productId, 1, 1000)
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await expectError('22023', () =>
+        db.query('select public.complete_sale($1::jsonb)', [JSON.stringify(secondPayload)]),
+      )
+    })
+
+    const stock = await db.query('select stock_on_hand from public.products where id = $1', [productId])
+    assert(Number(stock.rows[0].stock_on_hand) === 0, 'stock is not zero after the only successful sale')
+    const movements = await db.query(
+      `select count(*)::int as n from public.stock_movements
+        where transaction_id = $1 and movement_type = 'sale_out'`,
+      [first.transaction_id],
+    )
+    assert(movements.rows[0].n === 1, 'unexpected number of sale_out movements')
+    const secondTx = await db.query('select count(*)::int as n from public.transactions where idempotency_key = $1', [secondPayload.idempotency_key])
+    assert(secondTx.rows[0].n === 0, 'the rejected sale created a transaction')
+  })
+
+  await test('receipt numbers stay unique and sequential per business date', async () => {
+    const productId = await saleProduct('SALE-010', { stock: 5, price: 2000 })
+    const receipts = []
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      for (let index = 0; index < 2; index += 1) {
+        const result = await db.query('select public.complete_sale($1::jsonb) as r', [
+          JSON.stringify(cashPayload(productId, 1, 2000)),
+        ])
+        receipts.push(result.rows[0].r.receipt_no)
+      }
+    })
+
+    assert(receipts[0] !== receipts[1], 'two sales received the same receipt number')
+    assert(/^SS-20261102-[0-9]{4}$/.test(receipts[0]), `unexpected receipt ${receipts[0]}`)
+    const firstSeq = Number(receipts[0].slice(-4))
+    const secondSeq = Number(receipts[1].slice(-4))
+    assert(secondSeq === firstSeq + 1, 'receipt sequence did not increment by one')
   })
 }
 
