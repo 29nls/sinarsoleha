@@ -85,8 +85,8 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/settings',
     capability: 'settings.manage',
     phase: 7,
-    available: false,
-    description: 'Peran pengguna dan fitur opsional.',
+    available: true,
+    description: 'Fitur opsional: printer, scanner, dan gateway QRIS.',
   },
 ]
 

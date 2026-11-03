@@ -13,7 +13,8 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 4 | Mesin transaksi (4A), UI kasir (4B), riwayat/void (4C), validasi hosted & E2E (4D) | **4A–4D selesai (preview); checkout aktif; produksi belum diterapkan** |
 | 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C) | **5A–5C selesai & diuji lokal; migrasi preview menunggu approval** |
 | 6 | Laporan penjualan, per produk, exception data, ekspor CSV | **Selesai & diuji lokal** |
-| 7–8 | Plugin, UAT | Belum |
+| 7 | Plugin opsional: printer, scanner, gateway QRIS, halaman pengaturan | **Selesai & diuji lokal** |
+| 8 | UAT | Belum |
 
 Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal serta hosted; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **lulus** pada Phase 4D (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`. Produksi belum diterapkan.
 
@@ -30,6 +31,8 @@ Phase 5A menambah mesin inventaris di database: enam RPC opname (`create_stock_o
 Phase 5B menambah UI opname di `/stock-opname`: daftar sesi dengan filter status dan pencarian nomor, dialog pembuatan sesi (seluruh katalog / kategori / produk terpilih), halaman detail dengan tabel item dan highlight item yang perlu dihitung ulang, form hitung yang memvalidasi presisi serta alasan saldo awal di klien, alur submit → setujui → posting dengan konfirmasi owner, dan pembatalan beralasan. Konflik versi ditampilkan sebagai panel recount, bukan error. Migrasi 5A **belum** diterapkan ke preview, jadi halaman ini belum bisa dipakai di hosted — lihat `docs/12-stock-opname-ui.md`.
 
 Phase 5C menambah halaman inventaris baca-saja di `/inventory`: saldo stok per produk dengan filter saldo belum diketahui/negatif/kosong, histori pergerakan stok (`/inventory/movements`) dengan filter jenis dan rentang tanggal, serta laporan selisih opname (`/inventory/discrepancies`) dengan filter alasan. Ketiganya memakai `capability: inventory.read`, tidak menambah RPC atau migrasi, dan menampilkan saldo `NULL` sebagai “—” (bukan nol). Rincian ada di `docs/13-inventory-ui.md`.
+
+Phase 7 menambahkan tiga integrasi opsional di balik satu kontrak adapter: printer thermal (fallback dialog browser), barcode scanner keyboard-wedge, dan gateway QRIS yang secara jujur dilaporkan tidak tersedia pada build SPA ini. Halaman `/settings` (owner-only) mengatur flag dan `public_config` non-rahasia lewat RPC yang sudah ada; tidak ada migrasi baru. Semua plugin default nonaktif dan checkout, pencarian manual, serta QRIS manual tetap berjalan tanpa perangkat apa pun — lihat `docs/15-plugins-settings.md`.
 
 Phase 6 menambah halaman laporan owner-only: ringkasan harian dan rincian pendapatan per nota (`/reports`), penjualan per produk dari snapshot baris transaksi (`/reports/products`), serta exception data katalog dan transaksi legacy (`/reports/exceptions`). Tidak ada tabel agregat, RPC, atau migrasi baru — baris dibaca dengan RLS lalu diringkas di klien, dibatasi 5000 baris per periode dan ditandai bila terpotong. CSV dibuat di browser dengan BOM UTF-8. Margin/laba kotor tidak disajikan karena harga beli historis belum lengkap (PRD §5.5). Rincian ada di `docs/14-reports.md`.
 
@@ -93,4 +96,5 @@ types/          tipe database hasil generate
 - `docs/12-stock-opname-ui.md` — UI opname, alur tindakan, validasi klien, batasan Phase 5B
 - `docs/13-inventory-ui.md` — UI inventaris baca-saja: saldo, pergerakan, selisih (Phase 5C)
 - `docs/14-reports.md` — laporan penjualan, per produk, exception data, ekspor CSV (Phase 6)
+- `docs/15-plugins-settings.md` — kontrak adapter, printer/scanner/QRIS, sanitasi konfigurasi publik, halaman pengaturan (Phase 7)
 - `docs/PROGRESS.md` — log pengembangan

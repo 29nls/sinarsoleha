@@ -4,6 +4,7 @@ import { useAuthStore } from '~/stores/auth'
 import { useCashierStore } from '~/stores/cashier'
 import { useSupabaseClient } from '~/composables/useSupabase'
 import { useCashierSearch } from '~/composables/useCashierSearch'
+import { usePlugins } from '~/composables/usePlugins'
 import { completeSale, getCashierProducts, getReceipt, searchCashierProducts } from '~/services/cashier'
 import { businessDateJakarta, centsToAmount, describeCashierError, lineTotalCents } from '~/utils/cashier'
 import { formatDate, formatQuantity, formatRupiah } from '~/utils/format'
@@ -22,6 +23,7 @@ useHead({ title: 'Kasir · Toko Sinar Soleha POS' })
 const auth = useAuthStore()
 const store = useCashierStore()
 const client = useSupabaseClient()
+const plugins = usePlugins()
 
 const search = useCashierSearch((term) => searchCashierProducts(client, term))
 const searchModel = computed({
@@ -61,9 +63,49 @@ function setLineQuantity(productId: string, value: string) {
   notice.value = null
 }
 
-function chooseHighlighted() {
+/**
+ * Enter is also how a keyboard-wedge scanner submits a code typed into the
+ * search field. The debounced search may not have answered yet, so a ready
+ * scanner falls back to an *exact* SKU lookup. A near match is never added,
+ * because a cashier pressing Enter on a typed name must not get a different
+ * product than the one on screen.
+ */
+async function chooseHighlighted() {
   const product = search.results.value[search.highlighted.value]
-  if (product) chooseProduct(product)
+  if (product) {
+    chooseProduct(product)
+    return
+  }
+  if (!plugins.isEnabled('hardware.barcode_scanner')) return
+  const term = search.term.value.trim()
+  if (!term) return
+  try {
+    const rows = await searchCashierProducts(client, term)
+    const exact = rows.find((row) => row.sku.toLowerCase() === term.toLowerCase())
+    if (exact) chooseProduct(exact)
+  } catch {
+    notice.value = 'Pencarian gagal. Coba lagi atau pilih produk dari daftar.'
+  }
+}
+
+/**
+ * A scanner sends a complete SKU, so it is resolved directly instead of going
+ * through the debounced search. Only an exact SKU match is added: a partial
+ * match could put a different product into the cart than the one scanned.
+ * A failed scan leaves the manual search path untouched.
+ */
+async function handleScan(code: string) {
+  try {
+    const rows = await searchCashierProducts(client, code)
+    const exact = rows.find((row) => row.sku.toLowerCase() === code.toLowerCase())
+    if (!exact) {
+      notice.value = `Kode ${code} tidak ditemukan. Ketik SKU atau nama secara manual.`
+      return
+    }
+    chooseProduct(exact)
+  } catch {
+    notice.value = `Gagal mencari kode ${code}. Gunakan pencarian manual.`
+  }
 }
 
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -190,6 +232,7 @@ async function submitCheckout() {
 
 onMounted(() => {
   updateOnline()
+  void plugins.load()
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('online', updateOnline)
   window.addEventListener('offline', updateOnline)
@@ -213,6 +256,15 @@ onBeforeUnmount(() => {
 
     <div v-if="notice" class="notice notice-warn" role="status">{{ notice }}</div>
 
+    <div
+      v-if="plugins.isEnabled('payment.qris_gateway') && plugins.registry.value.qris.status !== 'ready'"
+      class="notice text-[12px]"
+      role="status"
+    >
+      Gateway QRIS dinamis tidak dapat berjalan di aplikasi SPA ini. Pembayaran QRIS tetap dicatat
+      manual setelah diverifikasi di aplikasi merchant.
+    </div>
+
     <div class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
       <div class="min-w-0 space-y-3">
         <section class="panel" aria-labelledby="search-title">
@@ -226,9 +278,12 @@ onBeforeUnmount(() => {
             <ProductSearch
               ref="searchBox"
               v-model="searchModel"
+              :scan-buffer="plugins.registry.value.scanner.buffer"
+              :scanner-enabled="plugins.registry.value.scanner.status === 'ready'"
               @navigate="search.move"
               @choose="chooseHighlighted"
               @escape="search.clear"
+              @scan="handleScan"
             />
           </div>
           <ProductResultsTable
@@ -284,6 +339,7 @@ onBeforeUnmount(() => {
     <ReceiptView
       v-if="receiptOpen && store.receipt"
       :receipt="store.receipt"
+      :printer="plugins.registry.value.printer"
       @close="receiptOpen = false"
     />
   </div>

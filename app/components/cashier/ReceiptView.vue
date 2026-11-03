@@ -1,9 +1,18 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { ReceiptDetail } from '~/types/cashier'
+import type { PrinterAdapter } from '~/adapters/printer'
 import { formatDate, formatDateTime, formatQuantity, formatRupiah } from '~/utils/format'
 
-const props = defineProps<{ receipt: ReceiptDetail }>()
+const props = defineProps<{
+  receipt: ReceiptDetail
+  /** Null/off keeps the built-in browser print path. */
+  printer?: PrinterAdapter | null
+}>()
 const emit = defineEmits<{ close: [] }>()
+
+const printNotice = ref<string | null>(null)
+const printing = ref(false)
 
 const methodLabel: Record<string, string> = {
   cash: 'Tunai',
@@ -11,8 +20,37 @@ const methodLabel: Record<string, string> = {
   other: 'Lainnya',
 }
 
-function printReceipt() {
-  window.print()
+async function printReceipt() {
+  printNotice.value = null
+  if (!props.printer || props.printer.status !== 'ready') {
+    window.print()
+    return
+  }
+
+  printing.value = true
+  try {
+    const result = await props.printer.print({
+      receiptNo: props.receipt.receiptNo,
+      businessDate: props.receipt.businessDate,
+      items: props.receipt.items.map((item) => ({
+        sku: item.sku,
+        name: item.name,
+        unit: item.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        lineTotal: item.lineTotal,
+      })),
+      subtotal: props.receipt.subtotal,
+      discountAmount: props.receipt.discountAmount,
+      grandTotal: props.receipt.grandTotal,
+      cashierName: props.receipt.cashierName,
+      createdAt: props.receipt.createdAt,
+      status: props.receipt.status,
+    })
+    printNotice.value = result.message
+  } finally {
+    printing.value = false
+  }
 }
 </script>
 
@@ -91,8 +129,12 @@ function printReceipt() {
         {{ props.receipt.createdAt ? formatDateTime(props.receipt.createdAt) : 'Waktu transaksi tidak tersedia' }} · {{ props.receipt.status }}
       </p>
 
+      <p v-if="printNotice" class="receipt-print-notice" role="status">{{ printNotice }}</p>
+
       <div class="receipt-actions">
-        <button class="btn" type="button" @click="printReceipt">Cetak</button>
+        <button class="btn" type="button" :disabled="printing" @click="printReceipt">
+          {{ printing ? 'Menyiapkan…' : 'Cetak' }}
+        </button>
         <button class="btn btn-primary" type="button" @click="emit('close')">Tutup</button>
       </div>
     </div>
@@ -195,6 +237,14 @@ function printReceipt() {
   color: var(--color-muted);
 }
 
+.receipt-print-notice {
+  margin-top: 0.75rem;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 0.375rem 0.5rem;
+  font-size: 11px;
+}
+
 .receipt-actions {
   display: flex;
   justify-content: flex-end;
@@ -225,7 +275,8 @@ function printReceipt() {
     padding: 0;
   }
 
-  .receipt-actions {
+  .receipt-actions,
+  .receipt-print-notice {
     display: none;
   }
 }

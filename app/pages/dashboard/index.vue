@@ -34,9 +34,9 @@ const modules = APP_MODULES
     <div class="flex flex-wrap items-end justify-between gap-2">
       <div>
         <h1 class="text-lg font-semibold tracking-tight">Dasbor</h1>
-        <p class="text-[12px] text-[var(--color-muted)]">UI kasir aktif secara lokal (Fase 4B); checkout dinonaktifkan sampai validasi hosted lulus. Stok impor tetap belum dapat dijual sampai opname.</p>
+        <p class="text-[12px] text-[var(--color-muted)]">Kasir aktif dan checkout tersimpan ke database. Stok impor tetap belum dapat dijual sampai opname.</p>
       </div>
-      <span class="tag tag-warn">Checkout ditahan</span>
+      <span class="tag tag-accent">Kasir aktif</span>
     </div>
 
     <div class="grid gap-4 lg:grid-cols-2">

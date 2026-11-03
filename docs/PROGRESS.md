@@ -641,3 +641,77 @@ di klien. RPT-04/RPT-05 tetap di halaman inventaris Phase 5C.
 - Exception katalog dibaca maksimal 5000 produk; katalog saat ini 1.360.
 - Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
   `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.
+
+## 4 November 2026 — Phase 7 (plugin opsional & halaman pengaturan)
+
+Tiga integrasi opsional dari PRD §10 di balik satu kontrak adapter. Tidak ada
+migrasi baru: `feature_flags` dan RPC owner-only `set_feature_flag` sudah ada
+sejak Phase 2. Semua plugin default nonaktif; POS inti tetap bekerja saat
+adapter mati, tidak tersedia, atau gagal.
+
+### Yang dibuat
+
+- `app/adapters/contracts.ts` — `PluginAdapter`, `AdapterStatus`,
+  `statusFor`, `statusLabel`. `statusFor` memaksa `off` saat flag mati.
+- `app/adapters/printer.ts` — `PrinterAdapter.print()` dengan transport dialog
+  browser; opsi bridge dilaporkan `unavailable` (belum terpasang), kegagalan
+  cetak tidak pernah membatalkan checkout.
+- `app/adapters/scanner.ts` — `createScanBuffer()` keyboard-wedge (jeda
+  maksimum 60 ms, panjang minimum, suffix Enter/Tab, abaikan modifier) dan
+  `createScannerAdapter()`.
+- `app/adapters/qris.ts` — adapter gateway yang selalu `unavailable` di build
+  SPA; `charge()` tidak pernah memanggil jaringan dan tidak menyimpan secret.
+- `app/adapters/registry.ts` — `createPluginRegistry(flags)`, `flagConfig`,
+  `flagEnabled`, `defaultFlags`.
+- `app/types/plugins.ts` — definisi tiga plugin, `sanitizePublicConfig`
+  (buang key rahasia/asing, validasi select/angka/panjang), `parseFeatureFlag`.
+- `app/services/settings.ts` — `loadFeatureFlags` (key tak dikenal diabaikan,
+  baris hilang = OFF), `saveFeatureFlag` lewat RPC, `describeSettingsError`.
+- `app/composables/usePlugins.ts` — state flag via `useState`, `load`/`save`,
+  registry reaktif, error tidak fatal.
+- `app/pages/settings/index.vue` + `app/components/settings/PluginCard.vue` —
+  halaman owner-only dengan toggle dan editor `public_config`.
+- `tests/plugins.test.ts` (24) dan `tests/settings-service.test.ts` (10).
+- `docs/15-plugins-settings.md`.
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `app/pages/cashier/index.vue` | Muat flag saat mount, catatan gateway QRIS, `scanBuffer`/`scannerEnabled` ke `ProductSearch`, `handleScan`, adapter printer ke `ReceiptView`. |
+| `app/components/cashier/ProductSearch.vue` | Listener scan di window hanya saat adapter `ready`; abaikan input/tombol/interaktif; label `Scanner`. |
+| `app/components/cashier/ReceiptView.vue` | `printReceipt()` memakai adapter bila `ready`, fallback `window.print()`; pesan hasil cetak. |
+| `app/pages/cashier/transactions/[id].vue` | Cetak ulang memakai adapter printer yang sama. |
+| `app/utils/modules.ts` | Entri `settings` menjadi `available: true`. |
+| `README.md` | Status Phase 7 dan tautan `docs/15`. |
+
+### Keputusan
+
+- Satu kontrak `enabled/available/initialize/healthCheck/describe` untuk semua
+  plugin; halaman kasir dan pengaturan hanya menyentuh registry.
+- QRIS dinamis ditolak secara eksplisit, bukan diimplementasikan setengah:
+  aplikasi ini SPA tanpa Nitro, sehingga tidak ada tempat aman untuk secret
+  provider maupun webhook.
+- `public_config` disanitasi dua arah (baca dan sebelum RPC), sehingga field
+  rahasia tidak pernah dikirim dari browser meski form dimanipulasi.
+- Kegagalan memuat flag tidak memblokir kasir: semua adapter menjadi OFF dan
+  jalur manual tetap dipakai.
+- `settings` memakai desain yang ada (`.panel`, `.field`, `.tag`, `.notice`,
+  `.btn`); tidak ada token atau komponen gaya baru.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **221/221 lulus** (16 file; 34 tes baru) |
+| `npm run build` | exit 0 (14,6 dtk; 1,92 MB / 474 kB gzip) |
+
+### Batasan
+
+- Belum diuji dengan printer/scanner fisik; bridge printer dan gateway QRIS
+  dinamis sengaja belum dibuat.
+- Toggle flag memerlukan koneksi Supabase; kegagalan hanya ditampilkan sebagai
+  pesan, tidak ada antrean offline.
+- Migrasi Phase 5A **masih menunggu approval** untuk preview
+  `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.

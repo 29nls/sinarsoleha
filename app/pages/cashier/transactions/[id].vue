@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useTransactionDetail } from '~/composables/useTransactionDetail'
 import { useTransactionVoid } from '~/composables/useTransactionVoid'
+import { usePlugins } from '~/composables/usePlugins'
 import { statusLabel, paymentMethodLabel } from '~/types/transactions'
 import { formatDate, formatDateTime, formatQuantity, formatRupiah } from '~/utils/format'
 import ReceiptView from '~/components/cashier/ReceiptView.vue'
@@ -13,6 +14,7 @@ definePageMeta({ capability: 'sale.read.own' })
 const route = useRoute()
 const auth = useAuthStore()
 const client = useSupabaseClient()
+const plugins = usePlugins()
 
 const transactionId = computed(() => route.params.id as string)
 const isOwner = computed(() => auth.role === 'owner')
@@ -30,6 +32,7 @@ const showVoidDialog = ref(false)
 const voidSuccess = ref<string | null>(null)
 
 onMounted(() => {
+  void plugins.load()
   void load(transactionId.value)
 })
 
@@ -188,7 +191,12 @@ function statusClass(status: string): string {
         </button>
       </div>
 
-      <ReceiptView v-if="showReceipt" :receipt="detail" @close="showReceipt = false" />
+      <ReceiptView
+        v-if="showReceipt"
+        :receipt="detail"
+        :printer="plugins.registry.value.printer"
+        @close="showReceipt = false"
+      />
 
       <VoidTransactionDialog
         :open="showVoidDialog"
