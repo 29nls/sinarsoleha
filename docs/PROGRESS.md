@@ -121,7 +121,7 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 
 ### Batasan
 
-- Impor 1.361 produk (Phase 3B) belum dijalankan; tidak ada seed data palsu.
+- Impor 1.361 produk (Phase 3B) dijalankan ke preview pada 3 November 2026; tidak ada seed data palsu.
 - P95 pencarian belum diukur pada dataset penuh.
 - Alur browser owner sudah diuji; tampilan baca-saja kasir/gudang belum diuji browser, tetapi RLS dan API-nya diuji hosted.
 - Expired token tetap 1 tes yang di-skip.
@@ -159,3 +159,56 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 1. Matikan sign-up hosted, hapus akun/data uji, dan review advisor keamanan.
 2. Siapkan alur `db push` produksi dengan backup dan persetujuan owner.
 3. Phase 3 — katalog dan impor; Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.
+
+## 3 November 2026 — Phase 3B (impor preview)
+
+### Lingkup
+
+- Audit awal: tidak ada implementasi 3B sebelumnya (tidak ada tabel `product_import_*`, script, RPC, tes, atau laporan). Staging transaksi legacy tidak dipakai ulang. Working tree bersih di `main` sebelum perubahan.
+- Workbook `PART MASTER` diprofilkan ulang: 1.361 baris, SHA-256 `48f8b5938ccc0fbe9b10ce78b2e09978791dbfecffe02c3b6d585a46f0643396`, 204 label kategori, 10 ejaan satuan, formula stok merujuk `STOCK MASTER` yang hilang.
+- Pipeline dry-run menghasilkan lima laporan gitignored di `.tmp/`: 1.360 baris siap, 1 review (`WAL-W1303` baris 1305, harga jual 9.500 < biaya 20.000), 0 rejected.
+- Migrasi staging owner-only dan empat RPC impor ditambahkan; tidak ada RPC yang menyentuh stok.
+- Owner menerapkan migrasi ke preview dan menjalankan `--apply` pada 3 November 2026 07:46–07:48 UTC; run `530bafe6…` selesai: 1.360 produk, 1 review, 0 ditolak, stok tidak tersentuh.
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi | `supabase/migrations/20261103090000_product_import.sql` |
+| Script | `scripts/product-import.mjs`, `scripts/product-import-rules.mjs` |
+| Tes | `tests/product-import.test.mjs` |
+| Dokumentasi | `docs/06-product-master-import.md` |
+| Laporan (gitignored) | `.tmp/product-import-preview.json`, `product-import-summary.md`, `product-import-errors.csv`, `product-category-map.csv`, `product-unit-map.csv` |
+
+### File dimodifikasi
+
+- `scripts/db-test.mjs` — 9 tes impor: otorisasi owner-only, satu run per checksum, staging idempoten, resolusi satuan, produk stok `NULL`, biaya, isu, impor ulang, baris review/rejected, SKU lama, rollback + retry, run parsial, resume, dan verifikasi stok.
+- `types/database.generated.ts` — regenerasi dari schema lokal (43.143 byte).
+- `package.json` — script `import:products`.
+- `README.md`, `docs/05-product-catalog.md`, `docs/PROGRESS.md` — status 3B.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `node scripts/product-import.mjs --dry-run` | 1.361 baris; 1.360 ready, 1 review, 0 rejected; 5 laporan dibuat |
+| `npm run test:db` | 12 migrasi apply bersih; **32/32 lulus** |
+| `npx vitest run tests/product-import.test.mjs` | **15/15 lulus** |
+| `npm test` | 5 file, **43/43 lulus** |
+| `npm run gen:types` | 43.143 byte |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+| Verifikasi hosted read-only | 1 run `completed`; 1.365 produk (1.360 impor + 5 uji `HOST-*`), semua stok `NULL`; 0 movement/opname; 1.360 audit `product.import` |
+
+### Batasan
+
+- Baris 1305 (`WAL-W1303`) masih review tanpa produk; perlu keputusan harga owner.
+- 5 produk uji `HOST-*` dan 5 kategori `Phase 2B …` masih ada di preview; bukan bagian impor dan harus dibersihkan sebelum produksi.
+- Semua stok masih `NULL`; saldo awal menunggu opname fisik Phase 5.
+- Verifikasi hosted hanya read-only (select + probe RPC), bukan suite penuh; `npm run test:hosted` tidak dijalankan ulang karena menulis data uji.
+
+### Tugas berikutnya
+
+1. Putuskan harga baris 1305, lalu impor baris itu bila sudah benar.
+2. Bersihkan 5 produk `HOST-*` dan 5 kategori uji Phase 2B, lalu tinjau 1.507 isu harga/stok.
+3. Phase 4 — RPC `complete_sale`; Phase 5 — opname dan Realtime.

@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:db": "node scripts/db-test.mjs",
     "test:hosted": "node scripts/hosted-smoke.mjs",
-    "gen:types": "node scripts/gen-types.mjs"
+    "gen:types": "node scripts/gen-types.mjs",
+    "import:products": "node scripts/product-import.mjs"
   },
   "dependencies": {
     "@pinia/nuxt": "^1.0.3",

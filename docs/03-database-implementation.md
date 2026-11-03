@@ -1,7 +1,7 @@
 # Implementasi Database
 
 **Status: Phase 2 COMPLETED untuk preview hosted; Phase 3A katalog selesai untuk preview (2 November 2026).**
-Seluruh 11 migrasi Phase 2 dan 1 migrasi kategori Phase 3A telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -132,7 +132,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 - Harga beli memakai `public.set_product_cost(uuid, numeric)`; nilai `NULL` dipertahankan.
 - Kategori memakai `public.upsert_category(jsonb)` dari migrasi `20261102091100_rpc_category.sql`: owner-only, `search_path = ''`, duplikat nama ditolak, audit `category.create`/`category.update`, dan tidak ada hard delete.
 - Tes UI/unit: 4 file, 28/28; tes database 22/22; hosted 22/22 dengan 1 skip. Detail arsitektur ada di `docs/05-product-catalog.md`.
-- Impor master 1.361 produk adalah Phase 3B dan belum dijalankan. Target pencarian P95 < 300 ms belum diukur pada dataset penuh.
+- Impor master 1.361 produk (Phase 3B) sudah dijalankan ke preview pada 3 November 2026. Target pencarian P95 < 300 ms belum diukur pada dataset penuh.
 
 ## 5. Status Temuan DB-01…DB-17
 
@@ -146,7 +146,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |
 | DB-07 | Selesai | `sku_normalized` unik + CHECK tanpa spasi tepi |
 | DB-08 | Selesai | `product_data_issues` multi-baris |
-| DB-09 | Selesai (schema) | staging legacy; pipeline impor belum |
+| DB-09 | Selesai | staging `product_import_*` + pipeline 3B; 1.360 produk diimpor ke preview 3 November 2026 |
 | DB-10 | Selesai | `document_counters` + row lock; diuji lewat 4 request paralel |
 | DB-11 | Sebagian | status/immutability ada; riwayat hitung per item belum tabel tersendiri |
 | DB-12 | Selesai | CHECK 8 reason code |

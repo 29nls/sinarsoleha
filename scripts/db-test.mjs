@@ -69,6 +69,21 @@ async function asRole(role, userId, fn) {
   }
 }
 
+async function asRoleCommit(role, userId, fn) {
+  await db.exec('begin')
+  try {
+    if (role) await db.exec(`set local role ${role}`)
+    if (userId) {
+      await db.query(`select set_config('request.jwt.claim.sub', $1, true)`, [userId])
+    }
+    await fn()
+    await db.exec('commit')
+  } catch (error) {
+    await db.exec('rollback').catch(() => {})
+    throw error
+  }
+}
+
 async function test(name, fn) {
   try {
     await fn()
@@ -590,6 +605,341 @@ async function runTests() {
     } finally {
       await db.exec('rollback')
     }
+  })
+
+  const importSha = 'a'.repeat(64)
+  let importRunId
+
+  const importRow = (overrides) => ({
+    raw_payload: { sumber: 'uji' },
+    sku_raw: 'IMP-001',
+    name_raw: 'Produk Impor Satu',
+    category_raw: 'Kategori Uji',
+    unit_raw: 'Pcs ',
+    sale_price_raw: '25000',
+    purchase_cost_raw: '1000',
+    stock_raw: '-3',
+    stock_formula: "ifna({'Stock'})",
+    normalized_sku: 'IMP-001',
+    normalized_name: 'Produk Impor Satu',
+    normalized_category: 'Kategori Uji',
+    unit_code: 'Pcs ',
+    category_id: categoryId,
+    sale_price: 25000,
+    purchase_cost: 1000,
+    stock_source: -3,
+    validation_status: 'ready',
+    review_status: 'negative_opening_stock',
+    issue_codes: ['negative_stock'],
+    error_messages: [],
+    ...overrides,
+  })
+
+  await test('product import staging is owner-only and never public', async () => {
+    await asRole('authenticated', CASHIER, async () => {
+      await expectError('42501', () =>
+        db.query(`select public.begin_product_import($1::jsonb)`, [
+          JSON.stringify({ source_filename: 'x.xlsx', source_worksheet: 'PART MASTER', source_sha256: importSha }),
+        ]),
+      )
+      const runs = await db.query('select count(*)::int as n from public.product_import_runs')
+      assert(runs.rows[0].n === 0, 'cashier saw import runs')
+      const rows = await db.query('select count(*)::int as n from public.product_import_rows')
+      assert(rows.rows[0].n === 0, 'cashier saw staged import rows')
+    })
+    await asRole('anon', null, async () => {
+      await expectError('42501', () => db.query('select count(*) from public.product_import_rows'))
+    })
+  })
+
+  await test('product import run is created once per source checksum', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const first = await db.query(`select public.begin_product_import($1::jsonb) as r`, [
+        JSON.stringify({
+          source_filename: 'product-master.xlsx',
+          source_worksheet: 'PART MASTER',
+          source_sha256: importSha,
+          source_row_count: 6,
+        }),
+      ])
+      importRunId = first.rows[0].r.id
+      assert(first.rows[0].r.status === 'running', 'new run is not running')
+
+      const again = await db.query(`select public.begin_product_import($1::jsonb) as r`, [
+        JSON.stringify({
+          source_filename: 'product-master.xlsx',
+          source_worksheet: 'PART MASTER',
+          source_sha256: importSha,
+          source_row_count: 6,
+        }),
+      ])
+      assert(again.rows[0].r.id === importRunId, 'a second run was created for the same checksum')
+
+      const count = await db.query('select count(*)::int as n from public.product_import_runs')
+      assert(count.rows[0].n === 1, 'duplicate import runs exist')
+    })
+  })
+
+  await test('staging batches are idempotent and resolve units by code', async () => {
+    const batch = [
+      importRow({ source_row_number: 901 }),
+      importRow({
+        source_row_number: 902,
+        sku_raw: 'IMP-002',
+        normalized_sku: 'IMP-002',
+        name_raw: 'Produk Impor Dua',
+        normalized_name: 'Produk Impor Dua',
+        unit_raw: 'Lusin',
+        unit_code: 'LUSIN',
+        sale_price_raw: '',
+        purchase_cost_raw: '',
+        sale_price: null,
+        purchase_cost: null,
+        stock_raw: '',
+        stock_source: null,
+        review_status: 'price_missing',
+        issue_codes: ['stock_unknown', 'sale_price_missing', 'purchase_cost_missing'],
+      }),
+      importRow({
+        source_row_number: 903,
+        sku_raw: 'IMP-003',
+        normalized_sku: 'IMP-003',
+        name_raw: 'Produk Review',
+        normalized_name: 'Produk Review',
+        validation_status: 'review',
+        review_status: 'review_required',
+        issue_codes: ['stock_unknown', 'duplicate_name'],
+      }),
+      importRow({
+        source_row_number: 904,
+        sku_raw: '',
+        normalized_sku: '',
+        name_raw: '',
+        normalized_name: '',
+        validation_status: 'rejected',
+        review_status: 'review_required',
+        issue_codes: [],
+        error_messages: ['SKU_REQUIRED: SKU kosong.'],
+      }),
+      importRow({
+        source_row_number: 905,
+        sku_raw: 'tes-001',
+        normalized_sku: 'TES-001',
+        name_raw: 'Duplikat SKU Lama',
+        normalized_name: 'Duplikat SKU Lama',
+      }),
+      importRow({
+        source_row_number: 906,
+        sku_raw: 'IMP-FAIL',
+        normalized_sku: 'IMP-FAIL',
+        name_raw: 'X'.repeat(201),
+        normalized_name: 'X'.repeat(201),
+      }),
+    ]
+
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const first = await db.query(`select public.stage_product_import_rows($1, $2::jsonb) as r`, [
+        importRunId,
+        JSON.stringify(batch),
+      ])
+      assert(first.rows[0].r.staged === 6, `expected 6 staged rows, got ${first.rows[0].r.staged}`)
+
+      const again = await db.query(`select public.stage_product_import_rows($1, $2::jsonb) as r`, [
+        importRunId,
+        JSON.stringify(batch),
+      ])
+      assert(again.rows[0].r.staged === 6, 're-staging did not update the same six rows')
+
+      const stored = await db.query(
+        `select count(*)::int as n,
+                count(*) filter (where unit_id is not null)::int as with_unit
+           from public.product_import_rows where run_id = $1`,
+        [importRunId],
+      )
+      assert(stored.rows[0].n === 6, 'staging did not stay at six rows')
+      assert(stored.rows[0].with_unit === 6, 'unit code was not resolved for every row')
+
+      const unit = await db.query(
+        `select u.code from public.product_import_rows r
+           join public.units_of_measure u on u.id = r.unit_id
+          where r.run_id = $1 and r.source_row_number = 901`,
+        [importRunId],
+      )
+      assert(unit.rows[0].code === 'PCS', 'trailing space in the unit was not normalized')
+    })
+  })
+
+  await test('importing a ready row creates a product with NULL stock and issues', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query(
+        `select public.import_product_import_row($1, 901) as r`,
+        [importRunId],
+      )
+      assert(result.rows[0].r.status === 'imported', 'row 901 was not imported')
+      assert(result.rows[0].r.already_imported === false, 'first import reported already_imported')
+
+      const product = await db.query(
+        `select id, sku, name, sale_price, stock_on_hand, stock_version, import_review_status
+           from public.products where sku_normalized = 'IMP-001'`,
+      )
+      assert(product.rows.length === 1, 'imported product is missing')
+      const row = product.rows[0]
+      assert(row.sku === 'IMP-001', `unexpected SKU ${row.sku}`)
+      assert(row.stock_on_hand === null, 'import wrote stock_on_hand')
+      assert(Number(row.stock_version) === 0, 'import changed stock_version')
+      assert(Number(row.sale_price) === 25000, 'sale price was not stored')
+      assert(row.import_review_status === 'negative_opening_stock', 'review status was not stored')
+
+      const cost = await db.query(
+        `select purchase_cost from public.product_costs where product_id = $1`,
+        [row.id],
+      )
+      assert(cost.rows.length === 1 && Number(cost.rows[0].purchase_cost) === 1000, 'cost was not stored')
+
+      const issues = await db.query(
+        `select issue_code from public.product_data_issues where product_id = $1 order by issue_code`,
+        [row.id],
+      )
+      assert(
+        issues.rows.map((item) => item.issue_code).join(',') === 'negative_stock',
+        `unexpected issues ${issues.rows.map((item) => item.issue_code).join(',')}`,
+      )
+
+      const movements = await db.query(
+        `select count(*)::int as n from public.stock_movements where product_id = $1`,
+        [row.id],
+      )
+      assert(movements.rows[0].n === 0, 'import created a stock movement')
+
+      const audit = await db.query(
+        `select count(*)::int as n from public.audit_logs
+          where action_key = 'product.import' and entity_id = $1`,
+        [row.id],
+      )
+      assert(audit.rows[0].n === 1, 'product.import was not audited')
+    })
+  })
+
+  await test('importing the same row twice is idempotent', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const again = await db.query(`select public.import_product_import_row($1, 901) as r`, [importRunId])
+      assert(again.rows[0].r.already_imported === true, 'second import created work again')
+      const count = await db.query(`select count(*)::int as n from public.products where sku_normalized = 'IMP-001'`)
+      assert(count.rows[0].n === 1, 'idempotent import duplicated the product')
+    })
+  })
+
+  await test('review and rejected rows cannot be imported', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      await expectError('22023', () => db.query(`select public.import_product_import_row($1, 903)`, [importRunId]))
+      await expectError('22023', () => db.query(`select public.import_product_import_row($1, 904)`, [importRunId]))
+    })
+  })
+
+  await test('an existing SKU is rejected without overwriting the product', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query(`select public.import_product_import_row($1, 905) as r`, [importRunId])
+      assert(result.rows[0].r.status === 'rejected', 'existing SKU was not rejected')
+      const product = await db.query(`select name from public.products where sku_normalized = 'TES-001'`)
+      assert(product.rows[0].name === 'Produk Uji', 'an existing product was overwritten')
+      const staged = await db.query(
+        `select validation_status from public.product_import_rows where run_id = $1 and source_row_number = 905`,
+        [importRunId],
+      )
+      assert(staged.rows[0].validation_status === 'rejected', 'staged row was not marked rejected')
+    })
+  })
+
+  await test('a failed row rolls back its product and can be retried', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const failed = await db.query(`select public.import_product_import_row($1, 906) as r`, [importRunId])
+      assert(failed.rows[0].r.status === 'failed', 'invalid product name was not reported as failed')
+      const product = await db.query(`select count(*)::int as n from public.products where sku_normalized = 'IMP-FAIL'`)
+      assert(product.rows[0].n === 0, 'a failed row left a partial product behind')
+
+      const retry = await db.query(`select public.stage_product_import_rows($1, $2::jsonb) as r`, [
+        importRunId,
+        JSON.stringify([
+          importRow({
+            source_row_number: 906,
+            sku_raw: 'IMP-FAIL',
+            normalized_sku: 'IMP-FAIL',
+            name_raw: 'Produk Impor Retry',
+            normalized_name: 'Produk Impor Retry',
+            stock_raw: '',
+            stock_source: null,
+            review_status: 'stock_unknown',
+            issue_codes: ['stock_unknown'],
+          }),
+        ]),
+      ])
+      assert(retry.rows[0].r.staged === 1, 'retry row was not re-staged')
+
+      const imported = await db.query(`select public.import_product_import_row($1, 906) as r`, [importRunId])
+      assert(imported.rows[0].r.status === 'imported', 'retry did not import the row')
+      const exists = await db.query(`select count(*)::int as n from public.products where sku_normalized = 'IMP-FAIL'`)
+      assert(exists.rows[0].n === 1, 'retry product is missing')
+    })
+  })
+
+  await test('a partial run cannot be completed and a failed run resumes', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      await expectError('23514', () =>
+        db.query(`select public.finish_product_import($1, 'completed')`, [importRunId]),
+      )
+      const failed = await db.query(`select public.finish_product_import($1, 'failed') as r`, [importRunId])
+      assert(failed.rows[0].r.status === 'failed', 'run was not closed as failed')
+
+      const resumed = await db.query(`select public.begin_product_import($1::jsonb) as r`, [
+        JSON.stringify({
+          source_filename: 'product-master.xlsx',
+          source_worksheet: 'PART MASTER',
+          source_sha256: importSha,
+          source_row_count: 6,
+        }),
+      ])
+      assert(resumed.rows[0].r.id === importRunId, 'resume created a different run')
+      assert(resumed.rows[0].r.status === 'running', 'resumed run is not running')
+    })
+  })
+
+  await test('the import leaves operational stock untouched', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const missingPrice = await db.query(`select public.import_product_import_row($1, 902) as r`, [importRunId])
+      assert(missingPrice.rows[0].r.status === 'imported', 'row 902 was not imported')
+
+      const imported = await db.query(
+        `select stock_on_hand, stock_version from public.products where sku_normalized in ('IMP-001', 'IMP-002', 'IMP-FAIL')`,
+      )
+      assert(imported.rows.length === 3, 'expected three imported products')
+      for (const row of imported.rows) {
+        assert(row.stock_on_hand === null, 'an imported product received stock')
+        assert(Number(row.stock_version) === 0, 'an imported product received a stock version')
+      }
+      const withStock = await db.query('select count(*)::int as n from public.products where stock_on_hand is not null')
+      assert(withStock.rows[0].n === 1, 'import changed the stock of unrelated products')
+      const movements = await db.query('select count(*)::int as n from public.stock_movements')
+      assert(movements.rows[0].n === 0, 'import created stock movements')
+
+      const finished = await db.query(`select public.finish_product_import($1, 'completed') as r`, [importRunId])
+      const run = finished.rows[0].r
+      assert(run.status === 'completed', 'run was not completed')
+      assert(run.total_rows === 6, `unexpected total_rows ${run.total_rows}`)
+      assert(run.imported_rows === 3, `unexpected imported_rows ${run.imported_rows}`)
+      assert(run.review_rows === 1, `unexpected review_rows ${run.review_rows}`)
+      assert(run.rejected_rows === 2, `unexpected rejected_rows ${run.rejected_rows}`)
+
+      await expectError('23505', () =>
+        db.query(`select public.begin_product_import($1::jsonb)`, [
+          JSON.stringify({
+            source_filename: 'product-master.xlsx',
+            source_worksheet: 'PART MASTER',
+            source_sha256: importSha,
+            source_row_count: 6,
+          }),
+        ]),
+      )
+    })
   })
 }
 

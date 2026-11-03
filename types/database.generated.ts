@@ -257,6 +257,70 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"product_import_rows": {
+                  Row: {
+                    "category_id": number | null,"category_raw": string | null,"created_at": string,"error_messages": (string)[],"id": number,"imported_at": string | null,"issue_codes": (string)[],"name_raw": string | null,"normalized_category": string | null,"normalized_name": string,"normalized_sku": string,"product_id": string | null,"purchase_cost": number | null,"purchase_cost_raw": string | null,"raw_payload": NonNullable<Json>,"review_status": string,"reviewed_at": string | null,"reviewed_by": string | null,"run_id": string,"sale_price": number | null,"sale_price_raw": string | null,"sku_raw": string | null,"source_row_number": number,"stock_formula": string | null,"stock_raw": string | null,"stock_source": number | null,"unit_code": string | null,"unit_id": number | null,"unit_raw": string | null,"updated_at": string,"validation_status": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "category_id"?: number | null,"category_raw"?: string | null,"created_at"?: string,"error_messages"?: (string)[],"id"?: never,"imported_at"?: string | null,"issue_codes"?: (string)[],"name_raw"?: string | null,"normalized_category"?: string | null,"normalized_name"?: string,"normalized_sku"?: string,"product_id"?: string | null,"purchase_cost"?: number | null,"purchase_cost_raw"?: string | null,"raw_payload"?: NonNullable<Json>,"review_status"?: string,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"run_id": string,"sale_price"?: number | null,"sale_price_raw"?: string | null,"sku_raw"?: string | null,"source_row_number": number,"stock_formula"?: string | null,"stock_raw"?: string | null,"stock_source"?: number | null,"unit_code"?: string | null,"unit_id"?: number | null,"unit_raw"?: string | null,"updated_at"?: string,"validation_status"?: string
+                  }
+                  Update: {
+                    "category_id"?: number | null,"category_raw"?: string | null,"created_at"?: string,"error_messages"?: (string)[],"id"?: never,"imported_at"?: string | null,"issue_codes"?: (string)[],"name_raw"?: string | null,"normalized_category"?: string | null,"normalized_name"?: string,"normalized_sku"?: string,"product_id"?: string | null,"purchase_cost"?: number | null,"purchase_cost_raw"?: string | null,"raw_payload"?: NonNullable<Json>,"review_status"?: string,"reviewed_at"?: string | null,"reviewed_by"?: string | null,"run_id"?: string,"sale_price"?: number | null,"sale_price_raw"?: string | null,"sku_raw"?: string | null,"source_row_number"?: number,"stock_formula"?: string | null,"stock_raw"?: string | null,"stock_source"?: number | null,"unit_code"?: string | null,"unit_id"?: number | null,"unit_raw"?: string | null,"updated_at"?: string,"validation_status"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_import_rows_category_id_fkey"
+      columns: ["category_id"]
+isOneToOne: false
+      referencedRelation: "categories"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_import_rows_product_id_fkey"
+      columns: ["product_id"]
+isOneToOne: false
+      referencedRelation: "products"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_import_rows_reviewed_by_fkey"
+      columns: ["reviewed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_import_rows_run_id_fkey"
+      columns: ["run_id"]
+isOneToOne: false
+      referencedRelation: "product_import_runs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "product_import_rows_unit_id_fkey"
+      columns: ["unit_id"]
+isOneToOne: false
+      referencedRelation: "units_of_measure"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },"product_import_runs": {
+                  Row: {
+                    "finished_at": string | null,"id": string,"imported_by": string | null,"imported_rows": number,"notes": string | null,"ready_rows": number,"rejected_rows": number,"review_rows": number,"source_filename": string,"source_row_count": number,"source_sha256": string,"source_worksheet": string,"started_at": string,"status": string,"total_rows": number
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "finished_at"?: string | null,"id"?: string,"imported_by"?: string | null,"imported_rows"?: number,"notes"?: string | null,"ready_rows"?: number,"rejected_rows"?: number,"review_rows"?: number,"source_filename": string,"source_row_count"?: number,"source_sha256": string,"source_worksheet": string,"started_at"?: string,"status"?: string,"total_rows"?: number
+                  }
+                  Update: {
+                    "finished_at"?: string | null,"id"?: string,"imported_by"?: string | null,"imported_rows"?: number,"notes"?: string | null,"ready_rows"?: number,"rejected_rows"?: number,"review_rows"?: number,"source_filename"?: string,"source_row_count"?: number,"source_sha256"?: string,"source_worksheet"?: string,"started_at"?: string,"status"?: string,"total_rows"?: number
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "product_import_runs_imported_by_fkey"
+      columns: ["imported_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"product_price_tiers": {
                   Row: {
                     "id": number,"is_active": boolean,"min_quantity": number,"product_id": string,"tier_key": string,"unit_price": number
@@ -556,11 +620,23 @@ isOneToOne: false
             "admin_upsert_profile":
 { Args: { "p_full_name": string,"p_is_active": boolean,"p_role": string,"p_user_id": string }; Returns: Json
                            },
+"begin_product_import":
+{ Args: { "p_payload": Json }; Returns: Json
+                           },
+"finish_product_import":
+{ Args: { "p_run_id": string,"p_status": string }; Returns: Json
+                           },
+"import_product_import_row":
+{ Args: { "p_run_id": string,"p_source_row_number": number }; Returns: Json
+                           },
 "set_feature_flag":
 { Args: { "p_enabled": boolean,"p_feature_key": string,"p_public_config": Json }; Returns: Json
                            },
 "set_product_cost":
 { Args: { "p_product_id": string,"p_purchase_cost": number }; Returns: Json
+                           },
+"stage_product_import_rows":
+{ Args: { "p_rows": Json,"p_run_id": string }; Returns: Json
                            },
 "upsert_category":
 { Args: { "p_payload": Json }; Returns: Json
