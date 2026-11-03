@@ -10,14 +10,16 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
 | 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1 baris review** |
-| 4 | Mesin transaksi (4A), UI kasir (4B) | **4A backend + migrasi preview; uji hosted tertunda** |
+| 4 | Mesin transaksi (4A), UI kasir (4B) | **4A backend + 4B UI lokal; verifikasi checkout hosted tertunda** |
 | 5–8 | Inventaris, laporan, plugin, UAT | Belum |
 
-Katalog produk sudah aktif. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal pada Phase 4A; UI kasir, verifikasi hosted, inventaris, dan laporan belum. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan hasil hosted ada di `docs/03-database-implementation.md`; arsitektur katalog ada di `docs/05-product-catalog.md`.
+Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal pada Phase 4A; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **belum lulus** karena preview belum memiliki produk berstok dan akun kasir kedua. Phase 4B belum boleh dianggap selesai untuk operasi hosted. Dasbor menampilkan status nyata, bukan data contoh.
 
 Impor master Phase 3B sudah dijalankan ke preview pada 3 November 2026: 1.360 produk masuk dengan stok `NULL`, 1 baris review (`WAL-W1303`), 0 ditolak. Rekonsiliasi dan sisa pekerjaan ada di `docs/06-product-master-import.md`.
 
 Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idempotensi, snapshot harga, dan ledger stok; 42/42 tes database lulus. Migrasi sudah aktif di preview dan matriks otorisasi hosted terverifikasi; uji konkurensi, idempotensi, void, dan pembayaran hosted menunggu fixture stok dan akun kasir kedua — lihat `docs/07-transaction-engine.md`.
+
+Phase 4B menambah `/cashier` untuk owner dan kasir aktif: pencarian server-side, tabel tanpa foto, keranjang yang menggabungkan produk duplikat, pembayaran tunai/QRIS manual/split, idempotensi retry, dan nota ramah cetak. Submit checkout sengaja dinonaktifkan sampai gate validasi Phase 4A.1 hosted lulus. 66/66 tes unit, typecheck, dan build lulus; checkout hosted serta browser E2E belum dijalankan. Stok `NULL` tetap tidak dapat dijual — lihat `docs/08-cashier-interface.md`.
 
 ## Menjalankan
 
@@ -72,4 +74,5 @@ types/          tipe database hasil generate
 - `docs/05-product-catalog.md` — arsitektur, izin, dan batasan katalog Phase 3A
 - `docs/06-product-master-import.md` — staging, RPC, impor, dan rekonsiliasi Phase 3B
 - `docs/07-transaction-engine.md` — mesin transaksi, idempotensi, penguncian, dan void Phase 4A
+- `docs/08-cashier-interface.md` — UI kasir, pembayaran, idempotensi klien, dan batas verifikasi Phase 4B
 - `docs/PROGRESS.md` — log pengembangan

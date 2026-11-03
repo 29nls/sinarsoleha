@@ -1,9 +1,9 @@
 # Mesin Transaksi — Phase 4A
 
-**Status: diimplementasikan dan diuji lokal; migrasi aktif di preview, uji transaksi hosted tertunda.**
+**Status: backend diimplementasikan dan diuji lokal; migrasi aktif di preview; uji transaksi hosted tertunda.**
 `complete_sale` dan `void_sale` sudah ada di migrasi `20261103110000_transaction_engine.sql` dan lulus 42/42 tes database lokal (10 tes baru). Objek migrasi sudah terverifikasi di preview (`request_fingerprint`, signature RPC, dan matriks otorisasi). Uji konkurensi, idempotensi, void, dan pembayaran hosted belum dijalankan karena preview belum memiliki produk berstok dan akun kasir kedua.
 
-Ruang lingkup hanya backend. UI kasir, opname, dan Realtime tetap Phase 4B/5.
+UI kasir Phase 4B sudah memanggil kontrak ini secara lokal (lihat `docs/08-cashier-interface.md`), tetapi belum ada checkout hosted yang berhasil diverifikasi. Operasi opname dan Realtime tetap Phase 5.
 
 ## 1. Prinsip
 
@@ -154,7 +154,7 @@ Migrasi `20261103110000_transaction_engine.sql`:
 - Validasi gagal sebelum tulisan → tidak ada perubahan.
 - Gagal setelah header (mis. pembayaran tidak seimbang) → seluruh RPC rollback; transaksi, item, pembayaran, movement, dan stok kembali seperti semula.
 - Kunci dilepas saat commit/rollback; tidak ada transaksi menggantung.
-- Retry aman karena idempotency key; keranjang di klien dipertahankan oleh UI (Phase 4B).
+- Retry aman karena idempotency key; keranjang di klien dipertahankan oleh UI Phase 4B (lihat §18).
 
 ## 14. Tes lokal
 
@@ -173,7 +173,7 @@ Migrasi `20261103110000_transaction_engine.sql`:
 | Oversell sekuensial | Stok 1: penjualan kedua ditolak, stok 0, satu movement |
 | Nomor nota | Unik dan berurutan per tanggal bisnis |
 
-`npm test` 43/43, `npm run typecheck` exit 0, `npm run build` exit 0, `npm run gen:types` 43.464 byte.
+`npm test` 66/66 (termasuk 23 tes kasir UI), `npm run typecheck` exit 0, `npm run build` exit 0, `npm run gen:types` 43.464 byte.
 
 ## 15. Keterbatasan dan verifikasi yang belum dilakukan
 
@@ -190,9 +190,9 @@ Migrasi `20261103110000_transaction_engine.sql`:
 1. Jalankan `supabase/tests/phase4a_preview_fixtures.sql` di SQL Editor preview; produk impor tidak disentuh.
 2. Buat dan aktifkan kasir kedua, lalu simpan sebagai role `cashier_b` di `.tmp/phase2b-accounts.json` atau set `TEST_CASHIER_B_EMAIL`/`TEST_CASHIER_B_PASSWORD`.
 3. Jalankan `npm run test:hosted:transactions`; skrip membuka dua klien kasir independen (bukan dua panggilan berurutan).
-3. Kirim `complete_sale` quantity 1 dengan idempotency key berbeda secara bersamaan.
-4. Harapkan tepat satu `completed`, satu `INSUFFICIENT_STOCK`, stok akhir 0, dan satu movement `sale_out`.
-5. Ulangi dengan kunci yang sama untuk membuktikan retry paralel tidak membuat nota ganda.
+4. Kirim `complete_sale` quantity 1 dengan idempotency key berbeda secara bersamaan.
+5. Harapkan tepat satu `completed`, satu `INSUFFICIENT_STOCK`, stok akhir 0, dan satu movement `sale_out`.
+6. Ulangi dengan kunci yang sama untuk membuktikan retry paralel tidak membuat nota ganda.
 
 ## 16. Keputusan bisnis yang masih terbuka
 
@@ -205,4 +205,15 @@ Migrasi `20261103110000_transaction_engine.sql`:
 
 ## 17. Fase berikutnya
 
-Phase 4B — UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah fixture stok dan kasir kedua tersedia, jalankan uji konkurensi dua sesi dan suite hosted sebelum menganggap Phase 4 selesai.
+Phase 4B sudah membuat UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah fixture stok dan kasir kedua tersedia, jalankan uji konkurensi dua sesi dan suite hosted sebelum menganggap Phase 4 selesai. Phase 5 (opname dan Realtime) belum dimulai.
+
+## 18. Integrasi UI kasir Phase 4B
+
+- `/cashier` hanya untuk `sale.create` (owner/kasir aktif); middleware menolak peran lain.
+- Keranjang menggabungkan produk duplikat agar payload tidak memuat `product_id` ganda.
+- Payload dibangun di `app/utils/cashier.ts`; hanya field kontrak yang dikirim. Diskon selalu 0.
+- Tunai mengirim `cash_received` dan `cash_change`; QRIS/other tidak membawa field tunai. Split didukung dengan total tepat dan konfirmasi manual QRIS.
+- Satu idempotency key per niat checkout. Timeout/network error mempertahankan key, payload, dan keranjang; retry mengirim payload yang sama. Keranjang hanya dikosongkan setelah sukses.
+- Nota memakai respons RPC dan snapshot `transactions`/`transaction_items`/`payments`; tidak membuat nilai sendiri.
+- Stok yang berubah setelah penolakan backend disegarkan tanpa menghapus baris dan tanpa mengganti harga yang dilihat kasir; checkout dinonaktifkan sampai quantity disesuaikan.
+- Status verifikasi: unit test lokal lulus, tetapi checkout hosted dan browser E2E **belum** dijalankan. Lihat `docs/08-cashier-interface.md`.

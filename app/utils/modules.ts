@@ -40,8 +40,8 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/cashier',
     capability: 'sale.create',
     phase: 4,
-    available: false,
-    description: 'Keranjang, diskon, pembayaran, dan nota.',
+    available: true,
+    description: 'Keranjang, pembayaran tunai/QRIS, dan nota.',
   },
   {
     key: 'inventory',

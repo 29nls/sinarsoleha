@@ -296,3 +296,55 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 1. Owner menjalankan `supabase/tests/phase4a_preview_fixtures.sql` di preview dan membuat kasir kedua.
 2. Jalankan `npm run test:hosted:transactions`, lalu catat hasil race dan rekonsiliasi.
 3. Phase 4B — UI kasir; Phase 5 — opname dan Realtime.
+
+## 3 November 2026 — Phase 4B (UI kasir)
+
+### Lingkup
+
+- Audit Phase 4A.1 diulang: migrasi 4A aktif di preview, matriks otorisasi hosted terverifikasi, tetapi 0 produk berstok, 0 transaksi, dan hanya satu akun kasir. Uji konkurensi/idempotensi/void/pembayaran hosted tetap tertunda; tidak ada hasil yang difabrikasi.
+- Halaman `/cashier` untuk owner dan kasir aktif dengan `capability: 'sale.create'`; gudang dan akun nonaktif ditolak middleware yang sudah ada.
+- Pencarian server-side (exact SKU, prefix SKU, nama contains), debounce 150 ms, maksimal 12 hasil, tanpa fetch seluruh katalog dan tanpa harga beli.
+- Tabel padat tanpa foto: SKU, nama, kategori, satuan, harga jual, stok, status, aksi. Stok `NULL` berstatus "Stok belum diopname", harga `NULL` "Harga belum tersedia", produk nonaktif dan stok habis tetap terlihat tetapi tidak bisa dimasukkan.
+- Keranjang Pinia menggabungkan produk duplikat, mendukung tambah/kurang/edit/hapus/kosongkan, menghormati `decimal_scale`, dan menghitung uang dalam integer sen di UI.
+- Pembayaran tunai (diterima/kembalian), QRIS manual dengan centang konfirmasi wajib, dan split dengan total tepat. Diskon selalu 0.
+- Satu idempotency key per niat checkout; timeout/network error mengunci keranjang sambil mempertahankan key, payload, dan isi keranjang. Retry mengirim payload yang sama; keranjang hanya dikosongkan setelah sukses, termasuk `already_processed`.
+- Nota menampilkan data RPC + snapshot database, dengan CSS ramah cetak. Tidak ada printer termal, gateway QRIS, opname, atau realtime.
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Halaman/komponen | `app/pages/cashier/index.vue`, `app/components/cashier/CashierHeader.vue`, `ProductSearch.vue`, `ProductResultsTable.vue`, `CartTable.vue`, `PaymentPanel.vue`, `ReceiptView.vue` |
+| State/layanan | `app/stores/cashier.ts`, `app/services/cashier.ts`, `app/composables/useCashierSearch.ts` |
+| Tipe/util | `app/types/cashier.ts`, `app/utils/cashier.ts`, `app/utils/receipt.ts` |
+| Tes/dokumentasi | `tests/cashier.test.mjs`, `docs/08-cashier-interface.md` |
+
+### File dimodifikasi
+
+- `app/utils/modules.ts` — modul kasir aktif.
+- `app/pages/dashboard/index.vue` — status kasir lokal dan batas hosted yang jujur.
+- `README.md`, `docs/PROGRESS.md`, `docs/07-transaction-engine.md` — status Phase 4B.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm test` | **66/66 lulus** (6 file; 23 tes kasir) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (26,0 dtk; run final setelah seluruh edit) |
+| `npm run test:hosted:transactions` | tidak dijalankan ulang; blocker sebelumnya tetap (kasir kedua/fixture stok belum ada) |
+| Browser E2E kasir | belum dijalankan |
+
+### Batasan
+
+- Phase 4B **belum selesai** menurut acceptance criteria: checkout hosted, pencarian/otorisasi hosted, dan browser E2E belum diverifikasi. Yang lulus adalah unit test, typecheck, dan build lokal.
+- Semua 1.360 produk impor tetap `stock_on_hand NULL`; tidak ada seed atau perubahan stok yang dilakukan. Fixture stok hanya untuk produk `TEST-` di preview.
+- Tidak ada gateway QRIS, printer termal, opname, adjustment, realtime, atau laporan penjualan.
+- Harga di keranjang dipertahankan saat refresh stok setelah penolakan backend; database tetap menentukan total final dan dapat menolak jika harga berubah.
+
+### Tugas berikutnya
+
+1. Owner menjalankan fixture preview dan membuat kasir kedua.
+2. Jalankan `npm run test:hosted:transactions`; catat race stok, idempotensi, void, pembayaran, dan rekonsiliasi.
+3. Uji browser dua sesi kasir (login, cari, keranjang, tunai/QRIS/split, retry timeout, nota, logout, gudang ditolak).
+4. Putuskan kebijakan diskon/refund/QRIS sebelum produksi; Phase 5 tetap belum dimulai.
