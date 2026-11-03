@@ -1,7 +1,7 @@
 # Mesin Transaksi — Phase 4A
 
-**Status: diimplementasikan dan diuji lokal; belum diterapkan ke preview.**
-`complete_sale` dan `void_sale` sudah ada di migrasi `20261103110000_transaction_engine.sql` dan lulus 42/42 tes database lokal (10 tes baru). Migrasi belum dijalankan ke project preview, sehingga tes hosted dan uji dua sesi belum dilakukan.
+**Status: diimplementasikan dan diuji lokal; migrasi aktif di preview, uji transaksi hosted tertunda.**
+`complete_sale` dan `void_sale` sudah ada di migrasi `20261103110000_transaction_engine.sql` dan lulus 42/42 tes database lokal (10 tes baru). Objek migrasi sudah terverifikasi di preview (`request_fingerprint`, signature RPC, dan matriks otorisasi). Uji konkurensi, idempotensi, void, dan pembayaran hosted belum dijalankan karena preview belum memiliki produk berstok dan akun kasir kedua.
 
 Ruang lingkup hanya backend. UI kasir, opname, dan Realtime tetap Phase 4B/5.
 
@@ -177,16 +177,19 @@ Migrasi `20261103110000_transaction_engine.sql`:
 
 ## 15. Keterbatasan dan verifikasi yang belum dilakukan
 
-- **Migrasi belum diterapkan ke preview.** Tidak ada kredensial DDL di lingkungan ini; penerapan menunggu owner.
-- **Uji konkurensi dua sesi belum dijalankan.** PGlite memakai satu koneksi, sehingga row lock tidak dapat diuji paralel. Jaminan saat ini berasal dari `FOR UPDATE` berurutan dan tes oversell sekuensial; ini belum memenuhi kriteria "concurrent oversell prevented".
-- **Tes hosted belum dijalankan.** Selain migrasi, membuat produk berstok di preview memerlukan jalur seed SQL karena belum ada RPC opname/adjustment; RLS menolak tulis langsung.
+- **Migrasi sudah aktif di preview.** Objek terverifikasi lewat probe read-only; riwayat migrasi CLI tidak dapat dibaca karena tidak ada access token dan project belum di-link.
+- **Fixture stok belum ada.** Semua produk preview memiliki `stock_on_hand NULL`; SQL seed disediakan di `supabase/tests/phase4a_preview_fixtures.sql` dan harus dijalankan owner lewat SQL Editor preview.
+- **Akun kasir kedua belum ada.** Preview hanya memiliki owner, satu kasir, staf gudang, dan akun nonaktif.
+- **Uji konkurensi, idempotensi, void, dan pembayaran hosted belum dijalankan.** PGlite memakai satu koneksi, sehingga row lock tidak dapat diuji paralel secara lokal; jaminan saat ini berasal dari `FOR UPDATE` berurutan dan tes oversell sekuensial.
+- **Matriks otorisasi hosted sudah terverifikasi:** anon/gudang/nonaktif `42501`, kasir mencapai fungsi (`P0002` untuk produk uji), kasir void `42501`, owner void mencapai fungsi (`P0002`).
 - `customer_id` belum dipakai untuk harga khusus atau loyalitas.
 - Laporan penjualan belum ada; pengecualian nota void harus diterapkan saat laporan dibuat.
 
-### Rencana verifikasi konkurensi (setelah migrasi diterapkan)
+### Rencana verifikasi konkurensi (setelah fixture dan akun tersedia)
 
-1. Seed dua produk `TEST-*` dengan stok 1 lewat SQL owner di preview (bukan produk impor).
-2. Buka dua sesi kasir independen (dua klien Supabase, bukan dua panggilan berurutan).
+1. Jalankan `supabase/tests/phase4a_preview_fixtures.sql` di SQL Editor preview; produk impor tidak disentuh.
+2. Buat dan aktifkan kasir kedua, lalu simpan sebagai role `cashier_b` di `.tmp/phase2b-accounts.json` atau set `TEST_CASHIER_B_EMAIL`/`TEST_CASHIER_B_PASSWORD`.
+3. Jalankan `npm run test:hosted:transactions`; skrip membuka dua klien kasir independen (bukan dua panggilan berurutan).
 3. Kirim `complete_sale` quantity 1 dengan idempotency key berbeda secara bersamaan.
 4. Harapkan tepat satu `completed`, satu `INSUFFICIENT_STOCK`, stok akhir 0, dan satu movement `sale_out`.
 5. Ulangi dengan kunci yang sama untuk membuktikan retry paralel tidak membuat nota ganda.
@@ -202,4 +205,4 @@ Migrasi `20261103110000_transaction_engine.sql`:
 
 ## 17. Fase berikutnya
 
-Phase 4B — UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah migrasi diterapkan, jalankan uji konkurensi dua sesi dan tes hosted sebelum menganggap Phase 4 selesai.
+Phase 4B — UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah fixture stok dan kasir kedua tersedia, jalankan uji konkurensi dua sesi dan suite hosted sebelum menganggap Phase 4 selesai.

@@ -1,7 +1,7 @@
 # Implementasi Database
 
 **Status: Phase 2 COMPLETED untuk preview hosted; Phase 3A katalog selesai untuk preview (2 November 2026).**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. Migrasi Phase 4A sudah diterapkan ke preview, tetapi uji transaksi hosted belum dijalankan. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -140,7 +140,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A (lokal, 42/42 tes); `post_stock_opname`/`adjust_stock` masih Phase 5 |
+| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A (lokal, 42/42 tes; migrasi aktif di preview; uji hosted transaksi tertunda); `post_stock_opname`/`adjust_stock` masih Phase 5 |
 | DB-04 | Selesai | trigger `updated_at` |
 | DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |

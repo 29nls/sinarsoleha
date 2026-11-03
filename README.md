@@ -10,14 +10,14 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
 | 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1 baris review** |
-| 4 | Mesin transaksi (4A), UI kasir (4B) | **4A selesai lokal; 4B & hosted belum** |
+| 4 | Mesin transaksi (4A), UI kasir (4B) | **4A backend + migrasi preview; uji hosted tertunda** |
 | 5–8 | Inventaris, laporan, plugin, UAT | Belum |
 
 Katalog produk sudah aktif. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal pada Phase 4A; UI kasir, verifikasi hosted, inventaris, dan laporan belum. Dasbor menampilkan status nyata, bukan data contoh. Status Fase 2 dan hasil hosted ada di `docs/03-database-implementation.md`; arsitektur katalog ada di `docs/05-product-catalog.md`.
 
 Impor master Phase 3B sudah dijalankan ke preview pada 3 November 2026: 1.360 produk masuk dengan stok `NULL`, 1 baris review (`WAL-W1303`), 0 ditolak. Rekonsiliasi dan sisa pekerjaan ada di `docs/06-product-master-import.md`.
 
-Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idempotensi, snapshot harga, dan ledger stok; 42/42 tes database lulus. Migrasi belum diterapkan ke preview dan uji konkurensi dua sesi belum dijalankan — lihat `docs/07-transaction-engine.md`.
+Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idempotensi, snapshot harga, dan ledger stok; 42/42 tes database lulus. Migrasi sudah aktif di preview dan matriks otorisasi hosted terverifikasi; uji konkurensi, idempotensi, void, dan pembayaran hosted menunggu fixture stok dan akun kasir kedua — lihat `docs/07-transaction-engine.md`.
 
 ## Menjalankan
 
@@ -39,6 +39,7 @@ Tanpa kredensial Supabase, aplikasi tetap berjalan tetapi halaman login menampil
 | `npm test` | Unit test (Vitest) |
 | `npm run test:db` | Uji migrasi, RLS, dan RPC di PostgreSQL lokal (PGlite) |
 | `npm run test:hosted` | Uji Auth/RLS/RPC ke project preview (butuh akun uji lokal) |
+| `npm run test:hosted:transactions` | Uji transaksi Phase 4A di preview (butuh fixture stok dan kasir kedua) |
 | `npm run gen:types` | Regenerasi `types/database.generated.ts` dari schema |
 | `npm run import:products` | Dry-run impor master produk; `--apply` hanya setelah persetujuan owner |
 

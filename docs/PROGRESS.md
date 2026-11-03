@@ -245,13 +245,54 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 
 ### Batasan
 
-- Migrasi 4A belum diterapkan ke preview; tidak ada kredensial DDL di lingkungan ini.
+- Migrasi 4A sudah aktif di preview; riwayat migrasi CLI belum terverifikasi karena tidak ada access token.
 - Uji konkurensi dua sesi belum dijalankan: PGlite memakai satu koneksi, jadi hanya oversell sekuensial yang teruji. Jaminan paralel baru berasal dari desain `FOR UPDATE`.
 - Tes hosted belum dijalankan; produk berstok harus di-seed lewat SQL karena belum ada RPC opname/adjustment.
 - Diskon, refund, jendela void, jam tutup toko, dan bukti QRIS masih keputusan bisnis terbuka.
 
 ### Tugas berikutnya
 
-1. Terapkan migrasi 4A ke preview dan seed produk `TEST-*` berstok lewat SQL owner.
-2. Jalankan uji konkurensi dua sesi dan tes hosted, lalu perbarui hasilnya.
+1. Jalankan fixture SQL preview dan aktifkan kasir kedua.
+2. Jalankan uji konkurensi dua sesi dan tes hosted transaksi, lalu perbarui hasilnya.
+3. Phase 4B — UI kasir; Phase 5 — opname dan Realtime.
+
+## 3 November 2026 — Phase 4A.1 (validasi hosted, tertunda)
+
+### Hasil audit hosted
+
+- Target `ptbllrugrjepdhhdkzxn` (preview). Migrasi 4A ternyata sudah aktif: `transactions.request_fingerprint` ada dan `complete_sale`/`void_sale` merespons validasi, bukan `PGRST202`.
+- Riwayat migrasi remote tidak dapat dibaca: CLI tidak punya access token dan project belum di-link. Status disimpulkan dari objek schema, bukan dari `schema_migrations`.
+- Matriks otorisasi hosted: anon `42501`, gudang `42501`, akun nonaktif `42501`, kasir mencapai fungsi (`P0002` untuk produk acak), kasir void `42501`, owner void mencapai fungsi (`P0002`). Tidak ada tulisan yang dibuat oleh probe.
+- Preview belum punya produk berstok: 0 produk dengan `stock_on_hand` tidak `NULL`, 0 transaksi. Lima produk `HOST-*` dan produk impor tetap `NULL`.
+- Hanya ada satu akun kasir, sehingga syarat dua sesi kasir independen belum terpenuhi.
+
+### Artefak dibuat
+
+| File | Isi |
+| --- | --- |
+| `supabase/tests/phase4a_preview_fixtures.sql` | Tiga produk `TEST-TXN-*`, opname opening balance, movement dengan aritmetika benar |
+| `scripts/transaction-hosted-smoke.mjs` | Suite hosted: dua sesi kasir, race stok 1, idempotensi, void, pembayaran, otorisasi, rekonsiliasi |
+| `package.json` | Script `test:hosted:transactions` |
+
+### Verifikasi yang dijalankan
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **42/42 lulus** (tidak berubah) |
+| `npm test` | **43/43 lulus** |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+| `node --check scripts/transaction-hosted-smoke.mjs` | exit 0 |
+| `npm run test:hosted:transactions` | **BLOCKED** — akun kasir kedua belum ada |
+
+### Batasan
+
+- Uji konkurensi, idempotensi hosted, void hosted, dan pembayaran hosted belum dijalankan; Phase 4A tetap parsial.
+- Fixture SQL memerlukan SQL Editor owner karena tidak ada RPC yang boleh menulis stok.
+- Riwayat migrasi hosted belum terverifikasi lewat CLI.
+
+### Tugas berikutnya
+
+1. Owner menjalankan `supabase/tests/phase4a_preview_fixtures.sql` di preview dan membuat kasir kedua.
+2. Jalankan `npm run test:hosted:transactions`, lalu catat hasil race dan rekonsiliasi.
 3. Phase 4B — UI kasir; Phase 5 — opname dan Realtime.
