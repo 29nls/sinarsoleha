@@ -503,14 +503,14 @@ isOneToOne: false
                   ]
                 },"stock_opnames": {
                   Row: {
-                    "approved_at": string | null,"approved_by": string | null,"cancelled_at": string | null,"cancelled_by": string | null,"cancelled_reason": string | null,"created_at": string,"created_by": string,"id": string,"opname_no": string,"posted_at": string | null,"posted_by": string | null,"scope_note": string | null,"status": string,"submitted_at": string | null,"updated_at": string
+                    "approved_at": string | null,"approved_by": string | null,"cancelled_at": string | null,"cancelled_by": string | null,"cancelled_reason": string | null,"created_at": string,"created_by": string,"creation_key": string | null,"id": string,"opname_no": string,"posted_at": string | null,"posted_by": string | null,"scope_note": string | null,"status": string,"submitted_at": string | null,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"cancelled_reason"?: string | null,"created_at"?: string,"created_by": string,"id"?: string,"opname_no": string,"posted_at"?: string | null,"posted_by"?: string | null,"scope_note"?: string | null,"status"?: string,"submitted_at"?: string | null,"updated_at"?: string
+                    "approved_at"?: string | null,"approved_by"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"cancelled_reason"?: string | null,"created_at"?: string,"created_by": string,"creation_key"?: string | null,"id"?: string,"opname_no": string,"posted_at"?: string | null,"posted_by"?: string | null,"scope_note"?: string | null,"status"?: string,"submitted_at"?: string | null,"updated_at"?: string
                   }
                   Update: {
-                    "approved_at"?: string | null,"approved_by"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"cancelled_reason"?: string | null,"created_at"?: string,"created_by"?: string,"id"?: string,"opname_no"?: string,"posted_at"?: string | null,"posted_by"?: string | null,"scope_note"?: string | null,"status"?: string,"submitted_at"?: string | null,"updated_at"?: string
+                    "approved_at"?: string | null,"approved_by"?: string | null,"cancelled_at"?: string | null,"cancelled_by"?: string | null,"cancelled_reason"?: string | null,"created_at"?: string,"created_by"?: string,"creation_key"?: string | null,"id"?: string,"opname_no"?: string,"posted_at"?: string | null,"posted_by"?: string | null,"scope_note"?: string | null,"status"?: string,"submitted_at"?: string | null,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -620,10 +620,19 @@ isOneToOne: false
             "admin_upsert_profile":
 { Args: { "p_full_name": string,"p_is_active": boolean,"p_role": string,"p_user_id": string }; Returns: Json
                            },
+"approve_stock_opname":
+{ Args: { "p_opname_id": string }; Returns: Json
+                           },
 "begin_product_import":
 { Args: { "p_payload": Json }; Returns: Json
                            },
+"cancel_stock_opname":
+{ Args: { "p_opname_id": string,"p_reason": string }; Returns: Json
+                           },
 "complete_sale":
+{ Args: { "p_payload": Json }; Returns: Json
+                           },
+"create_stock_opname":
 { Args: { "p_payload": Json }; Returns: Json
                            },
 "finish_product_import":
@@ -631,6 +640,12 @@ isOneToOne: false
                            },
 "import_product_import_row":
 { Args: { "p_run_id": string,"p_source_row_number": number }; Returns: Json
+                           },
+"post_stock_opname":
+{ Args: { "p_opname_id": string }; Returns: Json
+                           },
+"record_stock_opname_count":
+{ Args: { "p_physical_qty": number,"p_reason_code": string,"p_reason_note": string,"p_stock_opname_item_id": string }; Returns: Json
                            },
 "set_feature_flag":
 { Args: { "p_enabled": boolean,"p_feature_key": string,"p_public_config": Json }; Returns: Json
@@ -640,6 +655,9 @@ isOneToOne: false
                            },
 "stage_product_import_rows":
 { Args: { "p_rows": Json,"p_run_id": string }; Returns: Json
+                           },
+"submit_stock_opname":
+{ Args: { "p_opname_id": string }; Returns: Json
                            },
 "upsert_category":
 { Args: { "p_payload": Json }; Returns: Json

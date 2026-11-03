@@ -1,7 +1,7 @@
 # Implementasi Database
 
-**Status: Phase 2 COMPLETED untuk preview hosted; Phase 3A katalog selesai untuk preview (2 November 2026).**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. Migrasi Phase 4A sudah diterapkan ke preview, tetapi uji transaksi hosted belum dijalankan. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: Phase 2–4D selesai dan tervalidasi hosted di preview; Phase 5A selesai secara lokal (belum diterapkan ke preview).**
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. Migrasi Phase 4A sudah diterapkan ke preview dan tervalidasi hosted pada Phase 4D (suite 10/10, browser E2E 10/10). Migrasi Phase 5A ada di repo tetapi **belum** diterapkan ke preview. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -21,6 +21,8 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261102090900_rpc_catalog.sql` | `upsert_product`, `set_product_cost` |
 | `20261102091000_rpc_admin.sql` | aktivasi/role user, bootstrap owner, feature flag RPC |
 | `20261102091100_rpc_category.sql` | `upsert_category` owner-only, validasi duplikat, audit, tanpa hard delete |
+| `20261103110000_transaction_engine.sql` | `complete_sale`, `void_sale`, idempotensi, penguncian produk |
+| `20261104100000_stock_opname_engine.sql` | Phase 5A: 6 RPC opname, `creation_key`, constraint delta nol untuk opening balance, constraint cancel sesi counting |
 
 ### Bukti schema hosted
 
@@ -134,13 +136,23 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 - Tes UI/unit: 4 file, 28/28; tes database 22/22; hosted 22/22 dengan 1 skip. Detail arsitektur ada di `docs/05-product-catalog.md`.
 - Impor master 1.361 produk (Phase 3B) sudah dijalankan ke preview pada 3 November 2026. Target pencarian P95 < 300 ms belum diukur pada dataset penuh.
 
+## 4B. Phase 5A — Mesin inventaris
+
+- Migrasi additive `20261104100000_stock_opname_engine.sql`: kolom `stock_opnames.creation_key` (unik, idempoten create), penggantian `stock_movements_delta_nonzero` dengan aturan yang hanya mengizinkan delta 0 untuk opening balance (`quantity_before IS NULL`, `quantity_after = 0`, `reason_code = 'opening_balance'`), pelonggaran `stock_opnames_submitted_consistency` agar sesi `counting` bisa dibatalkan, dua indeks parsial, enam fungsi `private` + enam wrapper `public`.
+- Tidak ada tabel baru dan tidak ada `DROP TABLE`; tabel opname/ledger/discrepancy yang sudah ada dipakai ulang.
+- Otorisasi: owner (semua), inventory_staff (create/count/submit), kasir & nonaktif ditolak `42501`. Approve/post/cancel owner-only. `GRANT EXECUTE` hanya ke `authenticated`.
+- Snapshot stok/versi dilakukan server-side (`INSERT ... SELECT`) termasuk produk nonaktif; stok NULL dipertahankan sebagai saldo awal.
+- Konflik versi mengembalikan JSON `version_conflict` (bukan exception) agar penanda `needs_recount` dan status `counting` ter-commit.
+- Tes database: **72/72 lulus** (30 tes baru grup A–H). Unit 83/83, typecheck dan build lulus.
+- Detail: `docs/11-inventory-engine.md`. Migrasi **belum** diterapkan ke preview.
+
 ## 5. Status Temuan DB-01…DB-17
 
 | ID | Status | Bukti / catatan |
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A (lokal, 42/42 tes; migrasi aktif di preview; uji hosted transaksi tertunda); `post_stock_opname`/`adjust_stock` masih Phase 5 |
+| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A dan tervalidasi hosted (10/10); `post_stock_opname` selesai Phase 5A secara lokal (72/72 tes, belum diterapkan ke preview); `adjust_stock` masih kontrak |
 | DB-04 | Selesai | trigger `updated_at` |
 | DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |

@@ -1394,6 +1394,754 @@ async function runTests() {
   })
 }
 
+// ============================================================================
+// Phase 5A — inventory engine (stock opname / opening balance)
+// ============================================================================
+
+async function opnameProduct(sku, options = {}) {
+  const { stock = 10, version = 0, price = 5000, active = true } = options
+  const result = await db.query(
+    `insert into public.products
+       (sku, name, unit_id, sale_price, stock_on_hand, stock_version, is_active)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     returning id`,
+    [sku, `Produk ${sku}`, unitId, price, stock, version, active],
+  )
+  return result.rows[0].id
+}
+
+async function rpcAs(role, userId, sql, params = []) {
+  let value
+  await asRoleCommit(role, userId, async () => {
+    const result = await db.query(sql, params)
+    value = result.rows[0].r
+  })
+  return value
+}
+
+async function expectRpcError(code, role, userId, sql, params = []) {
+  await asRole(role, userId, async () => {
+    await expectError(code, () => db.query(sql, params))
+  })
+}
+
+const createOpname = (payload, role = 'authenticated', userId = OWNER) =>
+  rpcAs(role, userId, 'select public.create_stock_opname($1::jsonb) as r', [JSON.stringify(payload)])
+
+const countItem = (itemId, qty, reason, note, role = 'authenticated', userId = OWNER) =>
+  rpcAs(role, userId, 'select public.record_stock_opname_count($1,$2,$3,$4) as r', [
+    itemId,
+    qty,
+    reason,
+    note,
+  ])
+
+async function opnameItem(opnameId, productId) {
+  const result = await db.query(
+    `select id, count_status from public.stock_opname_items
+      where stock_opname_id = $1 and product_id = $2`,
+    [opnameId, productId],
+  )
+  return result.rows[0]
+}
+
+async function productState(productId) {
+  const result = await db.query(
+    `select stock_on_hand, stock_version from public.products where id = $1`,
+    [productId],
+  )
+  return result.rows[0]
+}
+
+async function runOpnameTests() {
+  // ===== GROUP A — AUTHORIZATION =====
+
+  await test('A1 — anonymous callers cannot reach any opname RPC', async () => {
+    await expectRpcError('42501', 'anon', null, 'select public.create_stock_opname($1::jsonb)', [
+      JSON.stringify({}),
+    ])
+    await expectRpcError('42501', 'anon', null, 'select public.post_stock_opname($1)', [PRODUCT])
+    await expectRpcError('42501', 'anon', null, 'select public.cancel_stock_opname($1,$2)', [
+      PRODUCT,
+      'x',
+    ])
+  })
+
+  await test('A2 — inactive and cashier accounts are rejected', async () => {
+    await expectRpcError('42501', 'authenticated', INACTIVE, 'select public.create_stock_opname($1::jsonb)', [
+      JSON.stringify({}),
+    ])
+    await expectRpcError('42501', 'authenticated', CASHIER, 'select public.create_stock_opname($1::jsonb)', [
+      JSON.stringify({}),
+    ])
+    await expectRpcError('42501', 'authenticated', NO_PROFILE, 'select public.submit_stock_opname($1)', [
+      PRODUCT,
+    ])
+  })
+
+  await test('A3 — inventory staff may create and count', async () => {
+    const productId = await opnameProduct('OPN-A3', { stock: 5 })
+    const session = await createOpname({ product_ids: [productId] }, 'authenticated', WAREHOUSE)
+    assert(session.status === 'counting', 'staff creation did not start in counting')
+    const item = await opnameItem(session.opname_id, productId)
+    const counted = await countItem(item.id, 4, 'missing', null, 'authenticated', WAREHOUSE)
+    assert(counted.count_status === 'counted', 'staff count was not recorded')
+    assert(counted.counted_by === WAREHOUSE, 'count did not record the staff actor')
+  })
+
+  await test('A4 — inventory staff cannot approve, post or cancel', async () => {
+    const productId = await opnameProduct('OPN-A4', { stock: 5 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 5, null, null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+
+    await expectRpcError('42501', 'authenticated', WAREHOUSE, 'select public.approve_stock_opname($1)', [
+      session.opname_id,
+    ])
+    await expectRpcError('42501', 'authenticated', WAREHOUSE, 'select public.post_stock_opname($1)', [
+      session.opname_id,
+    ])
+    await expectRpcError('42501', 'authenticated', WAREHOUSE, 'select public.cancel_stock_opname($1,$2)', [
+      session.opname_id,
+      'batal',
+    ])
+    await expectRpcError('42501', 'authenticated', CASHIER, 'select public.approve_stock_opname($1)', [
+      session.opname_id,
+    ])
+  })
+
+  // ===== GROUP B — SESSION =====
+
+  await test('B1 — full catalog snapshot is created server-side', async () => {
+    const before = await db.query('select count(*)::int as n from public.products')
+    const session = await createOpname({ scope_note: 'Opname penuh' })
+    assert(session.item_count === before.rows[0].n, 'snapshot did not cover every product')
+    assert(/^OP-[0-9]{8}-[0-9]{4}$/.test(session.opname_no), `unexpected opname no ${session.opname_no}`)
+    const rows = await db.query(
+      `select count(*)::int as n, count(distinct product_id)::int as d
+         from public.stock_opname_items where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    assert(rows.rows[0].n === rows.rows[0].d, 'duplicate products in the snapshot')
+  })
+
+  await test('B2 — selected scope, category scope and explicit exclusions', async () => {
+    const a = await opnameProduct('OPN-B2A', { stock: 3 })
+    const b = await opnameProduct('OPN-B2B', { stock: 4 })
+    const selected = await createOpname({ product_ids: [a, b], exclude_product_ids: [b] })
+    assert(selected.item_count === 1, 'explicit exclusion was not honoured')
+
+    const byCategory = await createOpname({ category_id: categoryId })
+    const listed = await db.query(
+      `select count(*)::int as n from public.stock_opname_items where stock_opname_id = $1`,
+      [byCategory.opname_id],
+    )
+    assert(listed.rows[0].n === byCategory.item_count, 'category snapshot mismatch')
+    assert(byCategory.item_count >= 2, 'category scope returned too few products')
+  })
+
+  await test('B3 — snapshots preserve NULL stock and the current version', async () => {
+    const known = await opnameProduct('OPN-B3K', { stock: 7, version: 3 })
+    const session = await createOpname({ product_ids: [known, PRODUCT_NULL] })
+    const rows = await db.query(
+      `select product_id, system_qty_snapshot, stock_version_snapshot
+         from public.stock_opname_items where stock_opname_id = $1 order by product_id`,
+      [session.opname_id],
+    )
+    const nullRow = rows.rows.find((row) => row.product_id === PRODUCT_NULL)
+    const knownRow = rows.rows.find((row) => row.product_id === known)
+    assert(nullRow.system_qty_snapshot === null, 'NULL stock was coerced')
+    assert(Number(knownRow.system_qty_snapshot) === 7, 'known stock snapshot wrong')
+    assert(Number(knownRow.stock_version_snapshot) === 3, 'stock version snapshot wrong')
+
+    const state = await productState(PRODUCT_NULL)
+    assert(state.stock_on_hand === null, 'creating an opname modified stock')
+  })
+
+  await test('B4 — inactive products are included in a full snapshot', async () => {
+    const inactive = await opnameProduct('OPN-B4', { stock: 2, active: false })
+    const session = await createOpname({})
+    const item = await opnameItem(session.opname_id, inactive)
+    assert(item, 'inactive product was dropped from the full snapshot')
+  })
+
+  await test('B5 — create is retry-safe and rejects an empty scope', async () => {
+    const productId = await opnameProduct('OPN-B5', { stock: 1 })
+    const key = randomUUID()
+    const first = await createOpname({ product_ids: [productId], idempotency_key: key })
+    const second = await createOpname({ product_ids: [productId], idempotency_key: key })
+    assert(first.opname_id === second.opname_id, 'retry created a second session')
+    assert(second.already_processed === true, 'retry was not flagged as already processed')
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.create_stock_opname($1::jsonb)', [
+      JSON.stringify({ product_ids: [randomUUID()] }),
+    ])
+  })
+
+  await test('B6 — invalid status transitions are rejected', async () => {
+    const productId = await opnameProduct('OPN-B6', { stock: 3 })
+    const session = await createOpname({ product_ids: [productId] })
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.approve_stock_opname($1)', [
+      session.opname_id,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.post_stock_opname($1)', [
+      session.opname_id,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.submit_stock_opname($1)', [
+      session.opname_id,
+    ])
+  })
+
+  // ===== GROUP C — COUNT =====
+
+  await test('C1 — count validates quantity, precision and reason rules', async () => {
+    const pcs = await opnameProduct('OPN-C1', { stock: 10 })
+    const session = await createOpname({ product_ids: [pcs] })
+    const item = await opnameItem(session.opname_id, pcs)
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, -1, 'missing', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 1.5, 'missing', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 8, null, null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 8, 'other', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 8, 'bogus', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 8, 'opening_balance', 'salah',
+    ])
+
+    const equal = await countItem(item.id, 10, null, null)
+    assert(equal.count_status === 'counted', 'matching count was rejected')
+    assert(Number(equal.difference_qty) === 0, 'difference should be zero')
+  })
+
+  await test('C2 — NULL stock requires an opening_balance reason and note', async () => {
+    const session = await createOpname({ product_ids: [PRODUCT_NULL] })
+    const item = await opnameItem(session.opname_id, PRODUCT_NULL)
+    assert(item.count_status === 'pending', 'new item is not pending')
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 0, null, null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 0, 'missing', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 0, 'opening_balance', null,
+    ])
+
+    const counted = await countItem(item.id, 0, 'opening_balance', 'Stok awal kosong')
+    assert(Number(counted.physical_qty) === 0, 'zero opening count was not accepted')
+    assert(counted.reason_code === 'opening_balance', 'reason was not preserved')
+  })
+
+  await test('C3 — counting never touches stock or the ledger', async () => {
+    const productId = await opnameProduct('OPN-C3', { stock: 6 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 2, 'broken_damaged', 'Pecah')
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 6, 'count changed product stock')
+    assert(Number(state.stock_version) === 0, 'count changed the stock version')
+    const movements = await db.query(
+      'select count(*)::int as n from public.stock_movements where stock_opname_id = $1',
+      [session.opname_id],
+    )
+    assert(movements.rows[0].n === 0, 'count wrote a stock movement')
+  })
+
+  await test('C4 — recount is allowed while counting and blocked after submit', async () => {
+    const productId = await opnameProduct('OPN-C4', { stock: 9 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 8, 'missing', null)
+    const recount = await countItem(item.id, 7, 'missing', null)
+    assert(Number(recount.physical_qty) === 7, 'recount did not overwrite the physical qty')
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 5, 'missing', null,
+    ])
+  })
+
+  // ===== GROUP D — APPROVAL =====
+
+  await test('D1 — submit rejects an incomplete session', async () => {
+    const a = await opnameProduct('OPN-D1A', { stock: 5 })
+    const b = await opnameProduct('OPN-D1B', { stock: 6 })
+    const session = await createOpname({ product_ids: [a, b] })
+    const itemA = await opnameItem(session.opname_id, a)
+    await countItem(itemA.id, 5, null, null)
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.submit_stock_opname($1)', [
+      session.opname_id,
+    ])
+    const status = await db.query('select status from public.stock_opnames where id = $1', [session.opname_id])
+    assert(status.rows[0].status === 'counting', 'failed submit still moved the session')
+  })
+
+  await test('D2 — a needs_recount item blocks submission', async () => {
+    const productId = await opnameProduct('OPN-D2', { stock: 4 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 4, null, null)
+    await db.query(`update public.stock_opname_items set count_status = 'needs_recount' where id = $1`, [
+      item.id,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.submit_stock_opname($1)', [
+      session.opname_id,
+    ])
+  })
+
+  await test('D3 — owner approves a complete session without touching stock', async () => {
+    const productId = await opnameProduct('OPN-D3', { stock: 8 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 7, 'missing', null)
+    await rpcAs('authenticated', WAREHOUSE, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+
+    const approved = await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(approved.status === 'approved', 'session was not approved')
+    assert(approved.approved_at, 'approved_at was not recorded')
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 8, 'approval changed stock')
+    const movements = await db.query(
+      'select count(*)::int as n from public.stock_movements where stock_opname_id = $1',
+      [session.opname_id],
+    )
+    assert(movements.rows[0].n === 0, 'approval wrote a movement')
+  })
+
+  // ===== GROUP E — POSTING =====
+
+  await test('E1 — known stock increase posts one adjustment and one log', async () => {
+    const productId = await opnameProduct('OPN-E1', { stock: 10 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 14, 'unrecorded_in', 'Temuan')
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const result = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(result.status === 'posted', 'session was not posted')
+    assert(result.discrepancy_count === 1, 'wrong discrepancy count')
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 14, 'stock was not raised to the physical count')
+    assert(Number(state.stock_version) === 1, 'stock version did not increment')
+
+    const movement = await db.query(
+      `select movement_type, quantity_delta, quantity_before, quantity_after, reason_code
+         from public.stock_movements where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    assert(movement.rows.length === 1, 'expected exactly one movement')
+    const row = movement.rows[0]
+    assert(row.movement_type === 'opname_adjustment', 'wrong movement type')
+    assert(Number(row.quantity_delta) === 4, 'wrong delta')
+    assert(Number(row.quantity_before) === 10, 'wrong quantity_before')
+    assert(Number(row.quantity_after) === 14, 'wrong quantity_after')
+
+    const log = await db.query(
+      `select revision, system_qty, physical_qty, difference_qty, reason_code, approved_by
+         from public.stock_discrepancy_logs where stock_opname_item_id = $1`,
+      [item.id],
+    )
+    assert(log.rows.length === 1, 'expected one discrepancy log')
+    assert(Number(log.rows[0].system_qty) === 10 && Number(log.rows[0].physical_qty) === 14, 'log quantities wrong')
+    assert(Number(log.rows[0].difference_qty) === 4, 'log difference wrong')
+    assert(log.rows[0].approved_by === OWNER, 'approver not recorded on the log')
+  })
+
+  await test('E2 — known stock decrease and no-change items', async () => {
+    const down = await opnameProduct('OPN-E2D', { stock: 10 })
+    const same = await opnameProduct('OPN-E2S', { stock: 5 })
+    const session = await createOpname({ product_ids: [down, same] })
+    const downItem = await opnameItem(session.opname_id, down)
+    const sameItem = await opnameItem(session.opname_id, same)
+    await countItem(downItem.id, 6, 'broken_damaged', 'Rusak')
+    await countItem(sameItem.id, 5, null, null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [session.opname_id])
+
+    assert(Number((await productState(down)).stock_on_hand) === 6, 'decrease was not applied')
+    assert(Number((await productState(same)).stock_on_hand) === 5, 'unchanged product moved')
+
+    const movements = await db.query(
+      `select product_id from public.stock_movements where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    assert(movements.rows.length === 1, 'a no-change item wrote a movement')
+    assert(movements.rows[0].product_id === down, 'movement attached to the wrong product')
+
+    const statuses = await db.query(
+      `select product_id, count_status from public.stock_opname_items where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    assert(statuses.rows.every((row) => row.count_status === 'posted'), 'items were not marked posted')
+  })
+
+  await test('E3 — opening balance with a positive quantity', async () => {
+    const productId = await opnameProduct('OPN-E3', { stock: null })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 12, 'opening_balance', 'Saldo awal toko')
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const result = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(result.opening_balance_count === 1, 'opening balance was not counted')
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 12, 'opening balance did not set stock')
+    assert(Number(state.stock_version) === 1, 'opening balance did not bump the version')
+
+    const movement = await db.query(
+      `select movement_type, quantity_before, quantity_delta, quantity_after, reason_code
+         from public.stock_movements where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    const row = movement.rows[0]
+    assert(row.movement_type === 'opening_balance', 'wrong movement type')
+    assert(row.quantity_before === null, 'opening balance must not invent a previous quantity')
+    assert(Number(row.quantity_delta) === 12 && Number(row.quantity_after) === 12, 'opening arithmetic wrong')
+    assert(row.reason_code === 'opening_balance', 'wrong reason on the opening movement')
+
+    const logs = await db.query(
+      'select count(*)::int as n from public.stock_discrepancy_logs where stock_opname_item_id = $1',
+      [item.id],
+    )
+    assert(logs.rows[0].n === 0, 'opening balance wrote a discrepancy log')
+  })
+
+  await test('E4 — opening balance of exactly zero is posted and ledgered', async () => {
+    const productId = await opnameProduct('OPN-E4', { stock: null })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 0, 'opening_balance', 'Belum ada stok fisik')
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [session.opname_id])
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 0, 'zero opening balance was not written')
+    assert(Number(state.stock_version) === 1, 'version did not increment for a zero opening')
+
+    const movement = await db.query(
+      `select quantity_before, quantity_delta, quantity_after, reason_code
+         from public.stock_movements where stock_opname_id = $1`,
+      [session.opname_id],
+    )
+    assert(movement.rows.length === 1, 'zero opening balance did not write a movement')
+    assert(Number(movement.rows[0].quantity_delta) === 0, 'delta should be zero')
+    assert(movement.rows[0].quantity_before === null, 'quantity_before must stay NULL')
+    assert(movement.rows[0].reason_code === 'opening_balance', 'reason missing on zero opening')
+  })
+
+  await test('E5 — the ledger still rejects a zero delta for other movement types', async () => {
+    await db.exec('begin')
+    try {
+      await expectError('23514', () =>
+        db.query(
+          `insert into public.stock_movements
+             (product_id, movement_type, quantity_delta, quantity_before, quantity_after, reason_code, actor_id)
+           values ($1, 'manual_adjustment', 0, 5, 5, 'input_error', $2)`,
+          [PRODUCT, OWNER],
+        ),
+      )
+      await expectError('23514', () =>
+        db.query(
+          `insert into public.stock_movements
+             (product_id, movement_type, quantity_delta, quantity_before, quantity_after, reason_code, actor_id)
+           values ($1, 'manual_adjustment', 0, null, 0, 'opening_balance', $2)`,
+          [PRODUCT, OWNER],
+        ),
+      )
+    } finally {
+      await db.exec('rollback')
+    }
+  })
+
+  await test('E6 — posting is idempotent and writes a single audit event', async () => {
+    const productId = await opnameProduct('OPN-E6', { stock: 3 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 2, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const first = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    const second = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(first.already_processed === false, 'first post was flagged as a replay')
+    assert(second.already_processed === true, 'replay was not detected')
+    assert(Number((await productState(productId)).stock_on_hand) === 2, 'replay changed stock again')
+    const movements = await db.query(
+      'select count(*)::int as n from public.stock_movements where stock_opname_id = $1',
+      [session.opname_id],
+    )
+    assert(movements.rows[0].n === 1, 'replay wrote another movement')
+    const audits = await db.query(
+      `select count(*)::int as n from public.audit_logs
+        where action_key = 'opname.post' and entity_id = $1`,
+      [session.opname_id],
+    )
+    assert(audits.rows[0].n === 1, 'expected exactly one opname.post audit event')
+  })
+
+  // ===== GROUP F — VERSION CONFLICT =====
+
+  await test('F1 — a stale snapshot blocks posting and returns to counting', async () => {
+    const productId = await opnameProduct('OPN-F1', { stock: 20 })
+    const untouched = await opnameProduct('OPN-F1B', { stock: 8 })
+    const session = await createOpname({ product_ids: [productId, untouched] })
+    const staleItem = await opnameItem(session.opname_id, productId)
+    const cleanItem = await opnameItem(session.opname_id, untouched)
+    await countItem(staleItem.id, 18, 'missing', 'Hilang')
+    await countItem(cleanItem.id, 8, null, null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+
+    // A cashier sells the product after the snapshot was taken.
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 2, 10000)),
+      ])
+    })
+
+    const result = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(result.result === 'version_conflict', `expected a conflict, got ${result.result}`)
+    assert(result.conflicts.length === 1, 'expected exactly one conflicting product')
+    const conflict = result.conflicts[0]
+    assert(conflict.product_id === productId, 'wrong product reported as conflicting')
+    assert(Number(conflict.snapshot_version) === 0, 'snapshot version missing')
+    assert(Number(conflict.current_version) === 1, 'current version missing')
+    assert(Number(conflict.snapshot_qty) === 20, 'snapshot qty missing')
+    assert(Number(conflict.current_qty) === 18, 'current qty missing')
+
+    // The conflict markers must survive: no exception was raised.
+    const opname = await db.query(
+      'select status, approved_by, approved_at from public.stock_opnames where id = $1',
+      [session.opname_id],
+    )
+    assert(opname.rows[0].status === 'counting', 'session did not return to counting')
+    assert(opname.rows[0].approved_by === null, 'approval was not cleared')
+    assert(opname.rows[0].approved_at === null, 'approved_at was not cleared')
+
+    const staleAfter = await opnameItem(session.opname_id, productId)
+    assert(staleAfter.count_status === 'needs_recount', 'conflicting item was not flagged')
+    const cleanAfter = await opnameItem(session.opname_id, untouched)
+    assert(cleanAfter.count_status === 'counted', 'unaffected item was modified')
+
+    // The sale's stock stands; the opname never overwrote it.
+    assert(Number((await productState(productId)).stock_on_hand) === 18, 'conflict overwrote stock')
+    assert(Number((await productState(untouched)).stock_on_hand) === 8, 'clean item was partially posted')
+
+    const movements = await db.query(
+      'select count(*)::int as n from public.stock_movements where stock_opname_id = $1',
+      [session.opname_id],
+    )
+    assert(movements.rows[0].n === 0, 'a stale movement was written')
+    const logs = await db.query(
+      'select count(*)::int as n from public.stock_discrepancy_logs where stock_opname_item_id = $1',
+      [staleItem.id],
+    )
+    assert(logs.rows[0].n === 0, 'a stale discrepancy log was written')
+  })
+
+  await test('F2 — recounting after a conflict posts the fresh count', async () => {
+    const productId = await opnameProduct('OPN-F2', { stock: 30 })
+    const session = await createOpname({ product_ids: [productId] })
+    let item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 25, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 5, 25000)),
+      ])
+    })
+
+    const conflict = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(conflict.result === 'version_conflict', 'conflict was not detected')
+
+    // The session is counting again, so the count can be refreshed against the
+    // new physical reality and re-submitted.
+    item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 24, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    const approved = await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(approved.status === 'approved', 're-approval after recount failed')
+  })
+
+  // ===== GROUP G — IMMUTABILITY =====
+
+  await test('G1 — posted sessions, items, movements and logs are immutable', async () => {
+    const productId = await opnameProduct('OPN-G1', { stock: 6 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 5, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [session.opname_id])
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.cancel_stock_opname($1,$2)', [
+      session.opname_id,
+      'terlambat',
+    ])
+
+    await db.exec('begin')
+    try {
+      await expectError('42501', () =>
+        db.query(`update public.stock_opnames set scope_note = 'x' where id = $1`, [session.opname_id]),
+      )
+      await expectError('42501', () =>
+        db.query(`update public.stock_opname_items set physical_qty = 99 where id = $1`, [item.id]),
+      )
+      await expectError('42501', () =>
+        db.query(`update public.stock_movements set reason_note = 'x' where stock_opname_id = $1`, [
+          session.opname_id,
+        ]),
+      )
+      await expectError('42501', () =>
+        db.query(`delete from public.stock_movements where stock_opname_id = $1`, [session.opname_id]),
+      )
+      await expectError('42501', () =>
+        db.query(`update public.stock_discrepancy_logs set physical_qty = 99 where stock_opname_item_id = $1`, [
+          item.id,
+        ]),
+      )
+      await expectError('42501', () =>
+        db.query(`delete from public.stock_discrepancy_logs where stock_opname_item_id = $1`, [item.id]),
+      )
+    } finally {
+      await db.exec('rollback')
+    }
+  })
+
+  await test('G2 — a cancelled session is final and never changes stock', async () => {
+    const productId = await opnameProduct('OPN-G2', { stock: 11 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 4, 'missing', null)
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.cancel_stock_opname($1,$2)', [
+      session.opname_id,
+      '   ',
+    ])
+    const cancelled = await rpcAs('authenticated', OWNER, 'select public.cancel_stock_opname($1,$2) as r', [
+      session.opname_id,
+      'Salah input',
+    ])
+    assert(cancelled.status === 'cancelled', 'session was not cancelled')
+    assert(Number((await productState(productId)).stock_on_hand) === 11, 'cancel changed stock')
+
+    const replay = await rpcAs('authenticated', OWNER, 'select public.cancel_stock_opname($1,$2) as r', [
+      session.opname_id,
+      'Salah input',
+    ])
+    assert(replay.already_processed === true, 'cancel replay was not idempotent')
+
+    // The audit row must record the status the session actually had, not the
+    // post-update value (v_opname is overwritten by RETURNING *).
+    const cancelAudit = await db.query(
+      `select before_data ->> 'status' as before_status
+         from public.audit_logs
+        where entity_id = $1 and action_key = 'opname.cancel'`,
+      [session.opname_id],
+    )
+    assert(cancelAudit.rows.length === 1, 'cancel did not write exactly one audit row')
+    assert(cancelAudit.rows[0].before_status === 'counting', `cancel audit recorded ${cancelAudit.rows[0].before_status}`)
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.record_stock_opname_count($1,$2,$3,$4)', [
+      item.id, 9, 'missing', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.submit_stock_opname($1)', [
+      session.opname_id,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.approve_stock_opname($1)', [
+      session.opname_id,
+    ])
+  })
+
+  // ===== GROUP H — SCALE & REPLAY =====
+
+  await test('H1 — a full snapshot of ~1,360 products stays a single statement', async () => {
+    const bulk = []
+    for (let index = 0; index < 1360; index += 1) {
+      bulk.push(`('BULK-${String(index).padStart(5, '0')}', 'Produk Bulk ${index}', ${index % 7 === 0 ? 'null' : index % 50}, ${index % 3})`)
+    }
+    await db.exec(
+      `insert into public.products (sku, name, unit_id, sale_price, stock_on_hand, stock_version)
+       values ${bulk.map((row) => row.replace(/^(\('BULK-[0-9]+', '[^']+'), /, `$1, '${unitId}', 1000, `)).join(',')}`,
+    )
+
+    const before = await db.query('select count(*)::int as n from public.products')
+    const started = Date.now()
+    const session = await createOpname({ scope_note: 'Uji skala 1360' })
+    const elapsed = Date.now() - started
+    assert(session.item_count === before.rows[0].n, 'bulk snapshot missed products')
+    assert(session.item_count >= 1360, `expected >=1360 items, got ${session.item_count}`)
+    assert(elapsed < 15000, `bulk snapshot too slow: ${elapsed} ms`)
+    console.log(`      bulk snapshot: ${session.item_count} items in ${elapsed} ms`)
+  })
+
+  await test('H2 — submit and approve replays are idempotent', async () => {
+    const productId = await opnameProduct('OPN-H2', { stock: 4 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 4, null, null)
+
+    const first = await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    const replay = await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(first.already_processed === false, 'first submit flagged as replay')
+    assert(replay.already_processed === true, 'submit replay was not detected')
+
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const approveReplay = await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(approveReplay.already_processed === true, 'approve replay was not detected')
+    const audits = await db.query(
+      `select count(*)::int as n from public.audit_logs
+        where entity_id = $1 and action_key in ('opname.submit','opname.approve')`,
+      [session.opname_id],
+    )
+    assert(audits.rows[0].n === 2, 'replays duplicated audit events')
+  })
+
+  await test('G3 — direct stock writes are still denied to clients', async () => {
+    await expectRpcError('42501', 'authenticated', OWNER, 'update public.products set stock_on_hand = 1 where id = $1', [
+      PRODUCT,
+    ])
+  })
+}
+
 async function main() {
   const bootstrap = await readFile(path.join(ROOT, 'supabase', 'tests', 'local_bootstrap.sql'), 'utf8')
   await db.exec(bootstrap)
@@ -1416,6 +2164,7 @@ async function main() {
 
   await seed()
   await runTests()
+  await runOpnameTests()
 
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed > 0) process.exitCode = 1

@@ -431,3 +431,213 @@ Tes katalog mencakup render tabel loading/empty, `NULL` harga/stok, stok negatif
 - Produksi belum diterapkan; seluruh migrasi hanya di preview. Race browser E2E berjalan serial (workers=1) — jaminan konkurensi tetap dari suite hosted dan `FOR UPDATE`.
 - Tidak ada perubahan stok ke 1.360 produk impor (tetap `stock_on_hand NULL`); fixture hanya produk `TEST-TXN-*`.
 - Keputusan bisnis terbuka (diskon, refund, jendela void, bukti QRIS) tetap di `docs/07-transaction-engine.md` bagian 16; Phase 5 belum dimulai.
+
+## 4 November 2026 — Phase 5A (mesin inventaris: stock opname & saldo awal)
+
+### Lingkup
+
+- Migrasi additive `supabase/migrations/20261104100000_stock_opname_engine.sql`:
+  enam RPC opname (`create_stock_opname`, `record_stock_opname_count`,
+  `submit_stock_opname`, `approve_stock_opname`, `post_stock_opname`,
+  `cancel_stock_opname`) dengan pola wrapper `public` tipis + implementasi
+  `private` `SECURITY DEFINER`, `SET search_path = ''`.
+- `stock_opnames.creation_key` unik untuk create yang retry-safe; snapshot
+  server-side (`INSERT ... SELECT`) seluruh katalog termasuk produk nonaktif,
+  dengan opsi `product_ids`, `category_id`, dan `exclude_product_ids`.
+- Saldo awal: `system_qty_snapshot IS NULL` → movement `opening_balance`
+  (`quantity_before NULL`), tanpa log selisih. Constraint
+  `stock_movements_delta_nonzero` diganti agar delta 0 sah **hanya** untuk
+  opening balance nol; tipe movement lain tetap ditolak.
+- Konflik versi mengembalikan JSON `version_conflict` (bukan exception) sehingga
+  item `needs_recount`, sesi kembali `counting`, dan approval yang dibersihkan
+  ikut ter-commit; tidak ada posting sebagian.
+- Constraint `stock_opnames_submitted_consistency` dilonggarkan untuk status
+  `cancelled` — sebelumnya sesi `counting` tidak bisa dibatalkan.
+- Dua indeks parsial untuk layar penghitungan dan pencarian item belum dihitung.
+
+### File dibuat / dimodifikasi
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi baru | `supabase/migrations/20261104100000_stock_opname_engine.sql` |
+| Tes | `scripts/db-test.mjs` (helper opname + 30 tes grup A–H) |
+| Dokumentasi | `docs/11-inventory-engine.md` baru; `docs/04-rpc-contracts.md`, `docs/03-database-implementation.md`, `README.md`, `docs/PROGRESS.md` diperbarui |
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **72/72 lulus** (42 lama + 30 baru) |
+| `npm test` | **83/83 lulus** |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 |
+
+### Batasan
+
+- Migrasi **belum** diterapkan ke preview (`ptbllrugrjepdhhdkzxn`); menunggu
+  approval eksplisit. Produksi tidak disentuh.
+- UI opname (Phase 5B) belum dibuat saat Phase 5A selesai; `adjust_stock` masih kontrak.
+- Tidak ada stok 1.360 produk impor yang diubah dan tidak ada saldo awal nyata
+  yang diposting; seluruh tes memakai produk sintetis `OPN-*`/`TEST-TXN-*`.
+- Konkurensi multi-sesi nyata (PostgREST) belum diuji; jaminan berasal dari
+  `FOR UPDATE` + perbandingan `stock_version` yang diuji secara logis di PGlite.
+
+## 4 November 2026 — Phase 5B (UI stok opname)
+
+### Lingkup
+
+- Halaman `/stock-opname` (daftar + pembuatan sesi) dan `/stock-opname/:id`
+  (detail, hitung, submit, setujui, posting, batal). Navigasi muncul untuk owner
+  dan inventory_staff lewat `availableModules`; kasir ditolak middleware.
+- Tipe domain `app/types/opname.ts`: label status/alasan, `validateCount` yang
+  mencerminkan guard RPC (presisi `decimal_scale`, alasan wajib saat selisih,
+  `opening_balance` + catatan untuk stok `NULL`), `describeOpnameError`.
+- Layanan `app/services/opname.ts`: enam wrapper RPC dengan mapping
+  snake_case → camelCase, plus `listOpnames`/`getOpnameDetail` yang membaca
+  langsung dari tabel (RLS staff) tanpa RPC baca baru.
+- Composable `useOpnameList` (debounce 200 ms, pagination, request-id guard) dan
+  `useOpnameDetail` (`opnameId` reaktif, ringkasan item, `conflicts`,
+  `postResult`).
+- Enam komponen `app/components/opname/*`: tabel daftar, dialog buat, tabel
+  item, dialog hitung, panel tindakan, panel konflik.
+- Konflik versi ditampilkan sebagai panel recount + highlight baris, bukan toast
+  error, karena RPC sengaja mengembalikan JSON agar penandaan `needs_recount`
+  ter-commit.
+- `app/utils/modules.ts`: entri `stock-opname` menjadi `available: true`.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **136/136 lulus** (10 file; 49 tes opname baru) |
+| `npm run build` | exit 0 |
+| `npm run test:db` | 72/72 (tidak berubah; tidak ada migrasi baru di 5B) |
+
+### Batasan
+
+- Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
+  `ptbllrugrjepdhhdkzxn`; halaman belum dapat dipakai di hosted. Produksi tidak
+  disentuh.
+- E2E hosted opname belum ada; butuh migrasi di preview dan Supabase CLI
+  terautentikasi.
+- Tanpa Realtime: operator lain tidak melihat hitungan sampai muat ulang.
+- Posting final, belum ada reversal; belum ada ekspor hasil opname.
+
+## 4 November 2026 — Phase 5C (UI inventaris)
+
+Halaman baca-saja untuk INV-01 dan INV-09. Tidak ada RPC atau migrasi baru;
+hanya membaca tabel yang sudah ada dengan policy staff.
+
+### Yang dibuat
+
+- `app/types/inventory.ts` — tipe baris saldo/movement/discrepancy, label jenis
+  movement, filter kosong, `describeInventoryError`, batas hari Jakarta.
+- `app/services/inventory.ts` — `listStockBalances` (filter unknown/negatif/
+  kosong + pencarian SKU/nama), `listStockMovements` dan
+  `listStockDiscrepancies` (filter produk via relasi, jenis/alasan, tanggal,
+  pagination). Nama aktor memakai embed `profiles`; bila RLS menolak (staf),
+  UI memakai `Anda` atau `Staf <8 id>`.
+- `app/composables/useInventory.ts` — `usePagedList` internal (debounce 200 ms,
+  request-id guard, `clampPage`, `pageCount`, `onScopeDispose`) lalu
+  `useStockBalances`, `useStockMovements`, `useStockDiscrepancies`.
+- Komponen `app/components/inventory/`: `InventoryTabs`, `StockBalanceFilters`,
+  `StockBalanceTable`, `MovementTable`, `DiscrepancyTable`.
+- Halaman `app/pages/inventory/index.vue`, `movements.vue`,
+  `discrepancies.vue`; semuanya `capability: inventory.read`.
+- `app/utils/modules.ts`: entri `inventory` menjadi `available: true`.
+
+### Keputusan
+
+- Tiga rute terpisah dengan tab bar, bukan satu halaman bertiga query.
+- Saldo `NULL` tetap `—` dan diberi tag "Belum diketahui"; tidak pernah `0`.
+- Filter "stok rendah" tidak bisa dilakukan PostgREST (perbandingan dua
+  kolom); baris rendah tetap di-highlight, filter server terbatas pada
+  unknown/negatif/kosong.
+- Rentang tanggal diperluas ke `+07:00` agar inklusif satu hari.
+- Pencarian produk memakai `or(..., { referencedTable: 'products' })` dengan
+  nilai di-escape dan di-quote.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **161/161 lulus** (12 file; 22 tes inventaris baru) |
+| `npm run build` | exit 0 (14,6 dtk; 1,91 MB / 473 kB gzip) |
+
+### Batasan
+
+- Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
+  `ptbllrugrjepdhhdkzxn`; ketiga halaman belum bisa dipakai di hosted.
+  Produksi tidak disentuh.
+- Belum ada ekspor, grafik tren, atau Realtime di halaman inventaris.
+- Nama staf selain diri sendiri tampil sebagai id pendek sampai ada RPC
+  daftar staf khusus owner.
+
+## 4 November 2026 — Phase 6 (laporan penjualan, per produk, exception data)
+
+Laporan baca-saja untuk RPT-01, RPT-02, RPT-03, dan RPT-06. Tidak ada RPC,
+view, atau migrasi baru: baris dibaca dengan RLS yang sudah ada lalu diringkas
+di klien. RPT-04/RPT-05 tetap di halaman inventaris Phase 5C.
+
+### Yang dibuat
+
+- `app/types/reports.ts` — tipe baris/result, label kategori exception, preset
+  dan normalisasi rentang Jakarta, `summarizeSales`, `salesTotals`,
+  `roundMoney`, `roundQuantity`, `describeReportError`, `toCsv`,
+  `csvFileName`.
+- `app/services/reports.ts` — `reportPaymentMethod` (menandai pembayaran
+  campuran sebagai `split`), `loadSalesReport` (RPT-01/02),
+  `loadProductSalesReport` (RPT-03, pengelompokan `product_id` dengan fallback
+  `sku:<snapshot>`), `loadExceptionReport` (RPT-06: katalog + transaksi
+  `reconciliation_status != 'matched'`).
+- `app/composables/useReports.ts` — rentang bersama lewat `useState`,
+  preset/custom, request-id guard per loader, `refresh` sesuai `autoLoad`
+  halaman sehingga tab exception tidak menarik transaksi.
+- `app/utils/download.ts` — `downloadCsv` via Blob + BOM UTF-8.
+- Komponen `app/components/reports/`: `ReportsTabs`, `ReportRangePicker`,
+  `SalesSummaryTable`, `SalesDetailTable`, `ProductSalesTable`,
+  `ExceptionTable`.
+- Halaman `app/pages/reports/index.vue`, `products.vue`, `exceptions.vue`;
+  semuanya `capability: report.sales`.
+- `app/utils/modules.ts`: entri `reports` menjadi `available: true`.
+- `tests/reports.test.ts` (13) dan `tests/reports-queries.test.ts` (13).
+
+### Keputusan
+
+- Agregasi di klien karena PostgREST tidak mendukung `GROUP BY`; tidak membuat
+  view agar definisi penjualan bersih tetap satu, yaitu `transactions`.
+- Batas `REPORT_ROW_LIMIT = 5000` per periode, dengan `count: 'exact'` dan
+  penanda `truncated`; UI meminta periode dipersempit, bukan menyajikan total
+  parsial sebagai lengkap.
+- Laporan penjualan default `status = completed`; opsi `all`/`voided` hanya di
+  service untuk audit.
+- Komposisi tunai/QRIS/lainnya memakai `grand_total` per nota sehingga
+  jumlahnya sama dengan penjualan bersih; pembayaran campuran menjadi `split`.
+- Per produk memakai snapshot baris transaksi, bukan katalog saat ini; baris
+  legacy tanpa mapping tetap dihitung lewat SKU snapshot.
+- Margin/laba kotor tidak dihitung atau ditampilkan (PRD §5.5: 119 harga beli
+  kosong, tidak ada histori biaya per tanggal).
+- CSV dibuat di browser; nilai `null` menjadi sel kosong, bukan nol.
+- Rentang tanggal memakai zona Asia/Jakarta; state rentang dibagi antar-tab.
+- `startOfJakartaDay`/`endOfJakartaDay` tidak diduplikasi di modul laporan;
+  sumber tunggalnya tetap `app/types/inventory.ts`, sehingga peringatan
+  duplikasi auto-import Nuxt hilang.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0, tanpa peringatan duplikasi |
+| `npm test` | **187/187 lulus** (14 file; 26 tes laporan baru) |
+| `npm run build` | exit 0 (15,5 dtk; 1,92 MB / 474 kB gzip) |
+
+### Batasan
+
+- Belum diuji terhadap data hosted; angka baru diverifikasi lewat unit test
+  bentuk query dan agregasi.
+- Tanpa pagination lanjutan, filter kasir, atau grafik tren.
+- Exception katalog dibaca maksimal 5000 produk; katalog saat ini 1.360.
+- Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
+  `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.

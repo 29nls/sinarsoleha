@@ -58,8 +58,8 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/inventory',
     capability: 'inventory.read',
     phase: 5,
-    available: false,
-    description: 'Saldo stok dan histori pergerakan.',
+    available: true,
+    description: 'Saldo stok, histori pergerakan, dan selisih opname.',
   },
   {
     key: 'stock-opname',
@@ -67,7 +67,7 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/stock-opname',
     capability: 'opname.count',
     phase: 5,
-    available: false,
+    available: true,
     description: 'Sesi hitung fisik, selisih, dan persetujuan.',
   },
   {
@@ -76,7 +76,7 @@ export const APP_MODULES: readonly AppModule[] = [
     path: '/reports',
     capability: 'report.sales',
     phase: 6,
-    available: false,
+    available: true,
     description: 'Penjualan, pendapatan, dan selisih stok.',
   },
   {
