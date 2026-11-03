@@ -715,3 +715,68 @@ adapter mati, tidak tersedia, atau gagal.
   pesan, tidak ada antrean offline.
 - Migrasi Phase 5A **masih menunggu approval** untuk preview
   `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.
+
+## 4 November 2026 — Phase 8 (keamanan & UAT)
+
+Audit keamanan yang dapat diulang plus checklist UAT per peran. Tidak ada
+migrasi baru: Phase 5A masih menunggu approval untuk preview, produksi tidak
+disentuh.
+
+### Yang dibuat
+
+- `scripts/audit-bundle.mjs` + `npm run audit:bundle` — memindai
+  `.output/public` dan `.output/server` untuk `sb_secret_<key>`,
+  `SUPABASE_SERVICE_ROLE_KEY=<nilai>`, claim JWT `service_role`, dan JWT
+  lengkap yang payload-nya `service_role`. Literal prefix milik
+  `@supabase/supabase-js` tidak dilaporkan. Exit 1 bila ada temuan.
+- Grup I pada `scripts/db-test.mjs` (8 tes): anon 0 grant tabel, tulis
+  authenticated hanya `categories`/`units_of_measure`, RLS 24/24 +
+  `document_counters` tanpa policy, 17 RPC `SECURITY DEFINER` dengan
+  `search_path=""`, anon tidak bisa EXECUTE RPC/tidak punya USAGE `private`,
+  helper internal tidak bisa dipanggil authenticated, panggilan langsung fungsi
+  trigger ditolak, dan default privilege bersih.
+- `docs/16-security-uat.md` — hasil audit, model ancaman, matriks peran,
+  checklist UAT owner/kasir/gudang, skenario konkurensi, batasan, dan
+  definition of done.
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `package.json` | Script `audit:bundle`. |
+| `scripts/db-test.mjs` | Grup I (8 tes) dijalankan setelah tes opname. |
+| `README.md` | Status Phase 8, paragraf ringkasan, baris perintah, tautan `docs/16`. |
+| `supabase/tests/README.md` | Jumlah migrasi/tes dan cakupan grup I. |
+
+### Keputusan
+
+- Audit bundle dibuat sempit dan sadar-library supaya tidak menghasilkan alarm
+  palsu; ia diuji dengan file bocor buatan dan kembali bersih setelah dihapus.
+- Temuan EXECUTE bawaan pada fungsi trigger **tidak** diperbaiki lewat migrasi
+  baru: dampaknya nihil (anon tanpa USAGE `private`, panggilan langsung 0A000)
+  dan setiap migrasi tambahan memperbesar permukaan review. Perbaikan
+  `revoke all … from public` digabung ke migrasi berikutnya yang sudah menunggu
+  approval.
+- Checklist UAT dipisah per peran dan memakai langkah yang bisa dibuktikan
+  (URL langsung untuk 403, payload `stock_on_hand` diabaikan, CSV kosong bukan
+  nol), bukan sekadar “halaman terbuka”.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test` | **221/221 lulus** (16 file) |
+| `npm run test:db` | **80/80 lulus** (8 tes keamanan baru) |
+| `npm run build` | exit 0 |
+| `npm run audit:bundle` | 147 berkas, **0 temuan** |
+
+### Batasan
+
+- UAT hosted belum dijalankan: halaman opname/inventaris menunggu migrasi 5A,
+  dan Supabase CLI belum terautentikasi (`SUPABASE_ACCESS_TOKEN` tidak ada).
+- Printer/scanner fisik dan gateway QRIS dinamis tidak tersedia di lingkungan
+  ini; keduanya tetap dilaporkan `unavailable`, bukan disimulasikan.
+- CSP/HSTS belum dipasang; harus dilakukan di lapisan hosting sebelum produksi.
+- Migrasi Phase 5A **masih menunggu approval** untuk preview
+  `ptbllrugrjepdhdhhdkzxn`; produksi tidak disentuh.

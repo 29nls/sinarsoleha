@@ -13,6 +13,7 @@
     "test:hosted": "node scripts/hosted-smoke.mjs",
     "test:hosted:transactions": "node scripts/transaction-hosted-smoke.mjs",
     "test:e2e": "playwright test",
+    "audit:bundle": "node scripts/audit-bundle.mjs",
     "gen:types": "node scripts/gen-types.mjs",
     "import:products": "node scripts/product-import.mjs"
   },

@@ -10,11 +10,11 @@ Harness `scripts/db-test.mjs` akan:
 
 1. Membuat cluster PGlite baru (in-memory).
 2. Membuat role `anon`, `authenticated`, `service_role`, schema `auth`, `auth.users`, dan `auth.uid()` (shim Supabase).
-3. Menerapkan seluruh `supabase/migrations/*.sql` berurutan (12 migrasi, termasuk RPC kategori Phase 3A).
+3. Menerapkan seluruh `supabase/migrations/*.sql` berurutan (15 migrasi).
 4. Mengisi fixture owner/kasir/gudang/nonaktif/produk.
-5. Menjalankan 22 skenario RLS, RPC, constraint, provisioning, dan audit.
+5. Menjalankan 80 skenario RLS, RPC, constraint, provisioning, audit, opname, dan hak akses.
 
-Hasil terakhir: **22 passed, 0 failed**.
+Hasil terakhir: **80 passed, 0 failed**.
 
 ## Hosted smoke test
 
@@ -39,6 +39,7 @@ Skrip membutuhkan `.env` dan `.tmp/phase2b-accounts.json` berisi akun uji previe
 - Aktivasi user, last-owner guard, feature flag owner-only.
 - Biaya hanya owner; default privilege tabel baru; audit append-only.
 - Owner membuat/mengubah/menonaktifkan kategori lewat RPC; duplikat nama ditolak; kasir tidak dapat memanggil RPC kategori.
+- Grup I (Phase 8): anon 0 grant tabel; tulis authenticated hanya `categories`/`units_of_measure`; RLS aktif di 24/24 tabel dan `document_counters` tanpa policy; 17 RPC `SECURITY DEFINER` dengan `search_path=""`; helper internal tidak bisa dieksekusi klien; panggilan langsung fungsi trigger ditolak; default privilege tidak memberi grant baru.
 
 ## Batasan
 

@@ -2142,6 +2142,132 @@ async function runOpnameTests() {
   })
 }
 
+async function runSecurityTests() {
+  await test('I1 — anon has no table privilege in the public schema', async () => {
+    const result = await db.query(
+      `select table_name, privilege_type
+         from information_schema.table_privileges
+        where table_schema = 'public' and grantee = 'anon'`,
+    )
+    assert(result.rows.length === 0, `anon still holds ${result.rows.length} table privileges`)
+  })
+
+  await test('I2 — authenticated writes are limited to categories and units', async () => {
+    const result = await db.query(
+      `select table_name, string_agg(privilege_type, ',' order by privilege_type) as privileges
+         from information_schema.table_privileges
+        where table_schema = 'public'
+          and grantee = 'authenticated'
+          and privilege_type in ('INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
+        group by table_name
+        order by table_name`,
+    )
+    const tables = result.rows.map((row) => row.table_name)
+    assert(
+      tables.length === 2 && tables.includes('categories') && tables.includes('units_of_measure'),
+      `unexpected write grants: ${tables.join(', ') || 'none'}`,
+    )
+  })
+
+  await test('I3 — every public table has RLS and document_counters has no policy', async () => {
+    const withoutRls = await db.query(
+      `select c.relname
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity`,
+    )
+    assert(withoutRls.rows.length === 0, `tables without RLS: ${withoutRls.rows.map((r) => r.relname).join(', ')}`)
+
+    const counterPolicies = await db.query(
+      `select count(*)::int as n from pg_policies
+        where schemaname = 'public' and tablename = 'document_counters'`,
+    )
+    assert(counterPolicies.rows[0].n === 0, 'document_counters must stay RPC-only')
+  })
+
+  await test('I4 — public RPCs are SECURITY DEFINER with an empty search_path', async () => {
+    const result = await db.query(
+      `select p.oid::regprocedure::text as signature, p.prosecdef, p.proconfig
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'`,
+    )
+    assert(result.rows.length >= 17, `only ${result.rows.length} public functions found`)
+    for (const row of result.rows) {
+      assert(row.prosecdef === true, `${row.signature} is not SECURITY DEFINER`)
+      assert(
+        Array.isArray(row.proconfig) && row.proconfig.includes('search_path=""'),
+        `${row.signature} does not pin search_path`,
+      )
+    }
+  })
+
+  await test('I5 — anon cannot execute any public RPC', async () => {
+    const publicExec = await db.query(
+      `select p.oid::regprocedure::text as signature
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'public'
+          and has_function_privilege('anon', p.oid, 'EXECUTE')`,
+    )
+    assert(publicExec.rows.length === 0, `anon can execute: ${publicExec.rows.map((r) => r.signature).join(', ')}`)
+
+    const schemaUsage = await db.query(
+      `select has_schema_privilege('anon', 'private', 'USAGE') as private_usage`,
+    )
+    assert(schemaUsage.rows[0].private_usage === false, 'anon has USAGE on private')
+
+    // Residual: some trigger helpers still carry the default PUBLIC EXECUTE
+    // grant. Without USAGE on the private schema the grant is unreachable, and
+    // a direct call fails. See docs/16-security-uat.md.
+    await asRole('anon', null, async () => {
+      await expectError('42501', () => db.query('select private.assert_transaction_balanced(null::uuid)'))
+      await expectError('42501', () => db.query('select private.has_role(array[\'owner\'])'))
+    })
+  })
+
+  await test('I6 — authenticated cannot execute internal helpers or read auth.users', async () => {
+    const helpers = await db.query(
+      `select p.proname
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private'
+          and p.proname in ('require_active_role', 'bootstrap_owner', 'write_audit',
+                            'next_document_number', 'complete_sale', 'void_sale')
+          and has_function_privilege('authenticated', p.oid, 'EXECUTE')`,
+    )
+    assert(helpers.rows.length === 0, `authenticated can execute: ${helpers.rows.map((r) => r.proname).join(', ')}`)
+
+    const authRead = await db.query(
+      `select has_table_privilege('authenticated', 'auth.users', 'SELECT') as readable`,
+    )
+    assert(authRead.rows[0].readable === false, 'authenticated can read auth.users')
+  })
+
+  await test('I7 — trigger helpers reject a direct call', async () => {
+    await asRole('authenticated', OWNER, async () => {
+      await expectError('0A000', () => db.query('select private.check_payment_balance()'))
+    })
+  })
+
+  await test('I8 — new tables do not inherit API privileges', async () => {
+    const defaults = await db.query(
+      `select count(*)::int as n
+         from pg_default_acl d, aclexplode(d.defaclacl) e
+         join pg_roles r on r.oid = e.grantee
+        where r.rolname in ('anon', 'authenticated')`,
+    )
+    assert(defaults.rows[0].n === 0, 'default privileges still grant anon/authenticated')
+
+    const sequences = await db.query(
+      `select count(*)::int as n
+         from information_schema.role_usage_grants
+        where object_schema = 'public' and grantee = 'anon'`,
+    )
+    assert(sequences.rows[0].n === 0, 'anon has sequence usage')
+  })
+}
+
 async function main() {
   const bootstrap = await readFile(path.join(ROOT, 'supabase', 'tests', 'local_bootstrap.sql'), 'utf8')
   await db.exec(bootstrap)
@@ -2165,6 +2291,7 @@ async function main() {
   await seed()
   await runTests()
   await runOpnameTests()
+  await runSecurityTests()
 
   console.log(`\n${passed} passed, ${failed} failed`)
   if (failed > 0) process.exitCode = 1
