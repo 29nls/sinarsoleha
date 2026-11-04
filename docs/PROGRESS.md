@@ -1684,7 +1684,9 @@ tertutup.
 Selama produksi berjalan di paket yang sama, **tidak akan ada backup otomatis**.
 Untuk data penjualan itu risiko nyata dan harus diputuskan sebelum go-live:
 naik ke paket Pro (backup harian 7 hari) atau menjalankan dump logis terjadwal
-dari mesin yang punya Docker.
+dari mesin yang punya Docker. Owner memilih paket berbayar pada 4 November 2026
+(`docs/23` §6.1 butir b), dan prosedur membuktikan restore-nya ada di `docs/24`
+§5.5 — dikerjakan setelah D4, karena backup sebelum impor tidak memuat produk.
 
 Yang tetap menguntungkan: `db:replay` membuktikan skema produksi bisa dibangun
 ulang dari repo. Itu jaminan yang lebih penting daripada satu database hidup,
@@ -1829,3 +1831,36 @@ suite 288/288, dan `npm run typecheck` lulus.
 
 Bukti lengkap: `docs/22` §11. Tahap A di `docs/23` §2 dan §8 sudah ditandai
 selesai. Produksi belum disentuh; Tahap 4 menunggu D1/D1a/D3 dari owner.
+
+### Celah runbook D1a ditutup (4 November 2026)
+
+D1a punya keputusan tertulis tetapi belum punya prosedur. Setelah drill selesai,
+`docs/24` §5.5 ditulis: kapan uji restore dikerjakan, peringatan agar tidak
+memakai restore in-place, langkah **Restore to a New Project**, query pembanding
+12 tabel, query sidik jari katalog, kriteria lulus, hal yang tidak dibuktikan,
+dan langkah pasca-lulus (catat bukti, hapus project uji, jangan arahkan `.env`
+produksi ke sana).
+
+Waktu pelaksanaannya dipindahkan: **D1a dibuktikan setelah D4**, bukan segera
+setelah D1. Backup harian baru memuat produk setelah impor, jadi menguji lebih
+awal hanya membuktikan database kosong bisa dipulihkan. Keputusan backup tetap
+diambil sebelum D1 (sudah, 4 November 2026). Konsekuensi jadwal yang dicatat di
+§1.1: buat D1 minimal sehari sebelum D5, atau D5 tertunda satu hari.
+
+Prosedurnya juga dicek terhadap dokumentasi Supabase, dan dua hal yang tidak
+boleh diasumsikan ternyata berbeda dari dugaan awal: (a) restore ke project baru
+bersifat **binary** dan langsung mengaktifkan ekstensi yang menjalankan operasi
+keluar — repo ini hanya memasang `pg_trgm`, tetapi ekstensi platform bisa aktif
+di luar migrasi, jadi §5.5 menyuruh memeriksa `pg_extension` lebih dulu; (b)
+project uji **mewarisi compute produksi**, sehingga biayanya bukan biaya project
+kosong, dan Auth settings + API key tidak ikut tersalin. Keduanya masuk §5.5,
+dan §5.2 dikoreksi karena kalimat lamanya bisa menuntun ke tombol restore
+in-place.
+
+Kedua query di §5.5 dijalankan terhadap skema asli lewat skrip PGlite
+(`.tmp/verify-restore-queries.mjs`, gitignored): 23 migrasi, lalu fixture dua
+produk. Hasilnya 12 baris tabel, `sidik_katalog`
+`e7d366b6475645fe4985b24724287494`, dan setelah satu `sale_price` diubah sidik
+jari berubah menjadi `08e8e4455c99198c0de593e58b7b60f9` — query pembanding tidak
+bisa lolos diam-diam saat isi katalog berbeda. Angka ini dari fixture, bukan dari
+produksi; yang dibuktikan adalah query-nya benar, bukan restore-nya sudah lulus.

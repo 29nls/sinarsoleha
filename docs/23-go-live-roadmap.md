@@ -75,7 +75,7 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | C2 | Bersihkan akun & data uji preview | Teknis | 0 fixture `TEST-*`/`HOST-*` aktif; akun uji **diarsipkan, bukan dihapus** (lihat di bawah) |
 | C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi ✅ |
 | C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi ✅ |
-| C5 | Uji backup & restore | Teknis | 23/23 migrasi reproducible dari nol ✅; **restore ke project uji belum** (lihat di bawah) |
+| C5 | Uji backup & restore | Teknis | 23/23 migrasi reproducible dari nol ✅; **restore ke project uji belum** — caranya sekarang tertulis di `docs/24` §5.5, dikerjakan setelah D4 |
 
 C1 **selesai** di preview: `disable_signup: true`, dan probe `POST
 /auth/v1/signup` mengembalikan `422 signup_disabled`. Aplikasi tidak butuh
@@ -194,20 +194,26 @@ direstore — bukan karena belum dicoba, tetapi karena tidak ada.
 3. **Tidak ada `pg_dump`/`psql`** di mesin ini, sehingga dump logis manual pun
    tidak bisa dijalankan.
 
-**Konsekuensi untuk produksi.** Selama produksi berjalan di paket yang sama,
-tidak akan ada backup otomatis. Itu risiko nyata untuk data penjualan, dan harus
-diputuskan sebelum go-live, bukan sesudah. Pilihannya: naik ke paket Pro (backup
-harian 7 hari) atau menjalankan dump logis terjadwal dari mesin yang punya
-Docker. Apa pun pilihannya, **`db:replay` sudah memberi jaminan yang justru lebih
-penting untuk go-live**: skema produksi bisa dibangun ulang dari repo, bukan
-tergantung pada satu database yang hidup.
+**Cara menutup butir ini sekarang sudah tertulis.** `docs/24` §5.5 memuat
+langkah restore ke project baru, query pembanding, dan sidik jari katalog yang
+dipakai sebagai bukti. Kedua query itu sudah dijalankan terhadap skema asli
+(23 migrasi di PGlite) dan sidik jarinya terbukti berubah saat satu harga
+diubah — jadi yang tersisa hanya project berbayar dan satu kali eksekusi.
+
+**Konsekuensi untuk produksi — sudah diputuskan.** Paket gratis tidak memberi
+backup otomatis sama sekali, dan itu tidak cukup untuk data penjualan. Owner
+memilih paket berbayar (backup harian 7 hari) pada 4 November 2026, jadi D1 harus
+dibuat di organisasi berbayar dan D5 tidak boleh dimulai sebelum satu restore ke
+project uji terbukti (`docs/24` §5.5). Terlepas dari itu, **`db:replay` sudah memberi jaminan yang
+justru lebih penting untuk go-live**: skema produksi bisa dibangun ulang dari
+repo, bukan tergantung pada satu database yang hidup.
 
 ## 5. Tahap D — Produksi (1–2 hari)
 
 | # | Langkah | Pemilik | Kriteria lulus |
 | --- | --- | --- | --- |
 | D1 | Buat project Supabase produksi terpisah | Owner | project ref baru, region sama |
-| D1a | Putuskan backup produksi: paket dengan backup harian, **atau** dump logis terjadwal dari mesin ber-Docker/`pg_dump` | Owner | satu pilihan tertulis, dan satu restore ke project uji terbukti |
+| D1a | Putuskan backup produksi: paket dengan backup harian, **atau** dump logis terjadwal dari mesin ber-Docker/`pg_dump` | Owner | satu pilihan tertulis, dan satu restore ke project uji terbukti — **dijalankan setelah D4**, cara di `docs/24` §5.5 |
 | D1b | Konfigurasi Vercel produksi: env `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` milik project produksi, `site_url` + redirect Auth ke domain produksi, HSTS `includeSubDomains` setelah domain sendiri ada | Teknis | login produksi mendarat di domain produksi, bukan `127.0.0.1`/preview |
 | D2 | `db push` 23 migrasi ke produksi | Teknis | `migration list --linked` 23/23 |
 | D3 | Buat akun owner produksi + `disable_signup` | Owner | 1 owner aktif, signup tertutup |
@@ -244,7 +250,7 @@ Tahap 2 terjawab; butir di bawah tidak perlu ditanyakan lagi.
 | Butir | Keputusan | Akibat |
 | --- | --- | --- |
 | a | Latihan opname **kecil di preview dulu**, lalu hitung penuh di produksi | A2 dikerjakan di Tahap 3 sebagai latihan 18 produk (`PERABOTAN MANGKUK`); D5 tetap hitungan fisik penuh |
-| b | Backup produksi = **paket berbayar** dengan backup harian otomatis | D1 dibuat di organisasi berbayar; D1a masih menunggu satu restore ke project uji |
+| b | Backup produksi = **paket berbayar** dengan backup harian otomatis | D1 dibuat di organisasi berbayar; D1a masih menunggu satu restore ke project uji, yang baru bisa diuji setelah D4 (`docs/24` §5.5) |
 | c | Ganti kata sandi **lewat dashboard**, tanpa halaman in-app | Tidak ada kode baru; `docs/24` §8 berlaku |
 | d | Isi nota **tetap seperti sekarang** (tanpa alamat/telepon/footer) | Tidak ada perubahan `ReceiptView.vue` |
 
@@ -270,8 +276,9 @@ Proyek dinyatakan siap pakai bila seluruh butir ini benar:
 - [ ] D1b selesai; env produksi + `site_url`/redirect Auth menunjuk domain produksi, bukan `127.0.0.1` atau preview
 - [ ] Owner menandatangani daftar batasan `docs/16` §6
 
-Butir pertama bisa dicapai hari ini. Butir kedua menentukan sisanya.
+Butir pertama sudah lunas 4 November 2026. Butir kedua — hitungan fisik di preview — menentukan sisanya, dan hanya itu yang bisa dikerjakan tanpa biaya atau akun baru.
 
 Yang **tidak** bisa dicentang dari dalam repo: A1 (frasa gate owner), B1–B3
-(hitungan fisik), D1/D1a (keputusan biaya owner), D6 (tanda tangan UAT).
-Semuanya butuh manusia, bukan kode.
+(hitungan fisik), D1/D1a (project berbayar dan satu restore ke project uji),
+D3 (akun owner), D6 (tanda tangan UAT). Semuanya butuh manusia dan biaya, bukan
+kode.

@@ -9,7 +9,8 @@ dashboard, isi nota tidak berubah.
 
 Prasyarat Tahap A sudah lunas: latihan opname kecil di preview selesai 4 November
 2026, termasuk konflik versi yang dipicu sengaja (`docs/22` §11). Yang belum ada
-hanya project produksi dan keputusan D1a.
+tinggal project produksi dan bukti restore D1a — keputusan backup-nya sendiri
+sudah diambil, dan cara membuktikannya sekarang tertulis di §5.5.
 
 Pendamping: `docs/23` §5 (tahap D), `docs/22` (opname), `docs/16` §5 (UAT),
 `docs/17` (akun), `docs/03` §3 (bootstrap owner).
@@ -40,7 +41,7 @@ tanda tangan) dari apa yang bisa divalidasi agen.
 | # | Langkah | Pemilik | Perintah / tempat | Kriteria lulus |
 | --- | --- | --- | --- | --- |
 | D1 | Buat project Supabase produksi terpisah | **Owner** | dashboard Supabase → New project, region **Southeast Asia (Singapore)** sama dengan preview | project ref baru (20 huruf kecil), org sama, region sama |
-| D1a | Backup produksi: **paket berbayar (dipilih 4 Nov 2026)** | **Owner** | lihat §5 | pilihan tertulis sudah ada; satu restore ke project uji masih harus dibuktikan |
+| D1a | Backup produksi: **paket berbayar (dipilih 4 Nov 2026)** | **Owner** | lihat §5 | pilihan tertulis sudah ada; satu restore ke project uji dibuktikan **setelah D4**, bukan segera setelah D1 (§5.5) |
 | D1b | Konfigurasi Vercel produksi | Teknis | lihat §4 | login produksi mendarat di domain produksi, bukan `127.0.0.1`/preview |
 | D2 | Terapkan 23 migrasi | Teknis | `npx supabase link --project-ref <ref-prod>` lalu `npx supabase db push` | `npx supabase migration list --linked` → 23/23 di kolom remote |
 | D3 | Buat akun owner produksi + tutup signup | **Owner** | dashboard → Authentication → Users → Add user; lihat §3 | 1 owner aktif, `activated_at` terisi, `POST /auth/v1/signup` → `422 signup_disabled` |
@@ -54,17 +55,28 @@ Urutan ini **tidak boleh** ditukar. D4 sebelum D5 karena saldo awal butuh
 dan butuh pelaku owner. D2 sebelum D3 karena trigger
 `private.handle_new_auth_user` baru ada setelah migrasi.
 
+Satu pengecualian yang disengaja: **bukti restore D1a dikerjakan setelah D4**,
+bukan di tempatnya di tabel. Backup yang memuat produk baru ada setelah impor,
+jadi menguji restore sebelumnya hanya membuktikan database kosong bisa
+dipulihkan. Keputusan backup-nya tetap diambil sebelum D1 (sudah, 4 November
+2026); yang bergeser hanya pembuktiannya.
+
 ### 1.1 Perkiraan waktu
 
 | Blok | Perkiraan | Catatan |
 | --- | --- | --- |
-| D1, D1a, D1b | 1–2 jam | menunggu provisioning project + keputusan biaya |
+| D1, D1b | 1–2 jam | menunggu provisioning project + keputusan biaya |
 | D2 | 15 menit | 23 migrasi, satu perintah |
 | D3, D3a, D4 | 1 jam | impor 1.361 baris + verifikasi |
 | D5 | **3–5 hari kerja** | 2 orang, 150–250 SKU/jam/orang |
 | D6 | 2–3 jam | UAT + latihan kasir |
 
 D5 adalah satu-satunya blok yang tidak bisa dipercepat perangkat lunak.
+
+Uji restore D1a tidak masuk blok mana pun di atas, karena tidak bisa dikerjakan
+saat itu juga: ia baru mungkin **setelah D4** dan setelah satu siklus backup
+harian lewat. Buat D1 minimal sehari sebelum D5, atau D5 tertunda satu hari
+(§5.5).
 
 ## 2. D1 — Membuat project produksi
 
@@ -249,7 +261,7 @@ dimaksud lewat dashboard, atau pakai config minimal yang hanya memuat blok
 **Keputusan owner, 4 November 2026: Pilihan A — paket berbayar dengan backup
 harian otomatis.** Tidak ada dump logis terjadwal sebagai jalur utama. Pilihan
 ini mengikat: D1 harus dibuat di organisasi yang sudah berbayar, dan D5 tidak
-boleh dimulai sebelum satu restore ke project uji terbukti (§5.4).
+boleh dimulai sebelum satu restore ke project uji terbukti (§5.5).
 
 Ini keputusan **biaya**, jadi milik owner. Agen hanya menyajikan pilihan dan
 cara membuktikannya.
@@ -281,13 +293,19 @@ ditawar:
 - **Project tidak dijeda karena tidak aktif.** Dokumentasi Supabase: project
   pada paket berbayar tidak bisa dijeda dan tidak terkena jeda otomatis;
   paket gratis dijeda bila aktivitas database terlalu rendah selama 7 hari.
-- Restore dilakukan dari dashboard (Database → Backups). **Project tidak bisa
-  diakses selama restore**, jadi lakukan di luar jam buka toko.
+- Restore dilakukan dari dashboard (Database → Backups), memakai tab
+  **Restore to a New Project** — bukan tombol restore di tempat, yang akan
+  memutar produksi ke titik lampau dan menghapus penjualan sesudah backup
+  (§5.5). Restore in-place membuat project tidak bisa diakses selama proses,
+  jadi kalau suatu saat benar-benar dipakai, lakukan di luar jam buka toko.
 - Backup harian **tidak** memuat objek Storage (hanya metadatanya). Untuk
   aplikasi ini tidak masalah karena tidak ada foto produk di Storage.
 
-Cocok bila toko buta terhadap operasi database dan ingin satu tombol pulih.
-Itu kondisi toko ini, jadi inilah yang dipilih owner.
+Cocok bila toko buta terhadap operasi database dan ingin pemulihan tanpa
+menyiapkan mesin dump sendiri. Itu kondisi toko ini, jadi inilah yang dipilih
+owner — dengan catatan bahwa "satu tombol" di sini berarti **membuat project
+baru dari backup**, lalu memindahkan aplikasi ke sana, bukan mengembalikan
+project yang sedang berjalan.
 
 ### 5.3 Pilihan B — dump logis terjadwal (tanpa biaya paket) — tidak dipakai
 
@@ -318,9 +336,140 @@ Yang **belum** selesai dan tetap wajib: satu restore ke project uji. Kriteria
 lulus D1a: pilihan tertulis di `docs/PROGRESS.md` (sudah), **dan** satu restore
 ke project uji berhasil dengan jumlah baris yang cocok. Tanpa itu, D5 belum
 boleh dimulai — mengisi saldo hasil hitungan fisik ke database tanpa backup
-terbukti berarti mengulang 3–5 hari kerja bila terjadi kegagalan.
+terbukti berarti mengulang 3–5 hari kerja bila terjadi kegagalan. Prosedurnya
+ada di §5.5.
 
-### 5.5 Jebakan paket gratis
+### 5.5 Cara membuktikan satu restore (wajib sebelum D5)
+
+**Kapan:** setelah D4 selesai dan **sebelum** D5 dimulai. Bukan segera setelah
+D1. Alasannya jadwal, bukan teknis: backup harian berjalan otomatis sekali
+sehari, dan dokumentasi Supabase tidak menjanjikan jam tertentu. Backup terbaru
+pada hari D1 karena itu bisa saja masih memotret database sebelum ada migrasi
+dan produk. Me-restore backup kosong membuktikan mesin restore hidup, tetapi
+tidak membuktikan data toko bisa kembali.
+
+Satu pemeriksaan sebelum mulai: tab **Restore to a New Project** hanya muncul
+bila project memakai **physical backups** dan organisasinya berbayar. Project
+baru (Postgres 15.8.1.079 ke atas) memakainya secara default, jadi ini normalnya
+sudah ada. Bila tab itu tidak ada, jangan mengakalinya dengan restore di tempat
+— laporkan, karena berarti asumsi paket/versi di §5.2 tidak berlaku untuk
+project tersebut.
+
+Konsekuensi perencanaan: **buat D1 minimal sehari sebelum D5.** Bila D1 dan D4
+dikerjakan pada hari yang sama, D5 tertunda satu hari untuk menunggu backup
+pertama yang memuat data. Itu satu hari, bukan kegagalan — jangan tergoda
+melewati uji ini karena jadwal.
+
+**Caranya — dan ini bagian yang tidak boleh salah:**
+
+1. Buka project **produksi** → Database → Backups → tab **Restore to a New
+   Project**.
+2. Pilih backup dengan timestamp **setelah D4 selesai**. Catat timestamp itu.
+   Bila PITR dinyalakan, tab yang sama memakai pemilih tanggal-jam, bukan daftar
+   backup; pilih waktu setelah D4 dan catat waktunya.
+3. Sebelum konfirmasi, dashboard menampilkan **perkiraan biaya** project baru.
+   Project uji mewarisi compute dan disk project sumber, jadi biayanya menyamai
+   produksi — bukan project kosong yang murah. Itu biaya nyata untuk satu kali
+   uji; setujui hanya bila angka itu diterima, dan hapus project uji setelah
+   selesai.
+4. Konfirmasi. Supabase membuat project **baru** dan menyalin seluruh database
+   ke sana, termasuk tabel `auth` beserta hash kata sandi dan encryption root
+   key. Project sumber **tidak** tersentuh.
+5. Setelah selesai, jalankan query di bawah di **SQL Editor project uji**, lalu
+   jalankan query yang sama di **produksi**, dan bandingkan. Tidak perlu
+   menyalakan aplikasi, mengisi `.env`, atau login ke project uji: verifikasi
+   D1a cukup lewat SQL Editor, dan kunci API project uji tidak perlu dipakai.
+
+Dua sifat proses ini yang perlu diketahui sebelum menekan tombol:
+
+- **Ini restore binary, bukan salinan selektif.** Seluruh database ikut, dan
+  ekstensi yang menjalankan operasi keluar (mis. `pg_net`, `pg_cron`, `wrappers`)
+  langsung aktif di project uji begitu restore selesai — tidak bisa dikecualikan
+  atau dijeda. Repo ini hanya memasang satu ekstensi, `pg_trgm`
+  (`20261102090000_extensions_and_helpers.sql`), yang tidak punya job terjadwal
+  maupun panggilan jaringan — tetapi itu **tidak** menjamin project produksi
+  bersih, karena Supabase dapat mengaktifkan ekstensi platform di luar migrasi.
+  Sebelum menekan tombol, periksa `select extname from pg_extension;` di
+  produksi. Bila ada `pg_cron`/`pg_net`/`wrappers` dengan job aktif, perlakukan
+  uji restore sebagai tindakan yang bisa memicu efek keluar, bukan sekadar
+  membaca data — dan catat ekstensi itu di `docs/PROGRESS.md`.
+- **Yang tidak ikut tersalin:** objek Storage, Edge Functions, **Auth settings,
+  dan API key**. Jadi project uji bukan salinan produksi yang siap dipakai
+  aplikasi; ia hanya sumber data untuk dibandingkan lewat SQL Editor.
+
+> **Jangan memakai tombol restore biasa pada project produksi.** Restore di
+> tempat akan memutar produksi kembali ke titik lampau dan menghapus setiap
+> penjualan sesudah backup itu. Yang dipakai hanya tab "Restore to a New
+> Project".
+
+Query pembanding (satu paste, jalankan di kedua project):
+
+```sql
+select 'products' as tabel, count(*) as baris from public.products
+union all select 'profiles', count(*) from public.profiles
+union all select 'categories', count(*) from public.categories
+union all select 'units_of_measure', count(*) from public.units_of_measure
+union all select 'product_import_rows', count(*) from public.product_import_rows
+union all select 'stock_movements', count(*) from public.stock_movements
+union all select 'stock_opnames', count(*) from public.stock_opnames
+union all select 'stock_opname_items', count(*) from public.stock_opname_items
+union all select 'transactions', count(*) from public.transactions
+union all select 'transaction_items', count(*) from public.transaction_items
+union all select 'audit_logs', count(*) from public.audit_logs
+union all select 'feature_flags', count(*) from public.feature_flags
+order by 1;
+```
+
+Jumlah baris yang cocok masih bisa menyembunyikan isi yang berbeda, jadi tambah
+satu sidik jari katalog — angka ini berubah bila satu harga atau satu SKU
+berbeda, walaupun jumlah barisnya sama:
+
+```sql
+select count(*) as produk,
+       count(*) filter (where stock_on_hand is not null) as berstok,
+       coalesce(sum(sale_price), 0) as total_harga_jual,
+       md5(string_agg(sku || ':' || coalesce(sale_price::text, '-'), ',' order by sku)) as sidik_katalog
+  from public.products;
+```
+
+Kriteria lulus: kedua tabel **identik baris per baris** dan `sidik_katalog`
+sama persis. Bila `audit_logs` berbeda satu atau dua baris, periksa apakah itu
+aksi yang terjadi setelah backup diambil — selisih yang bisa dijelaskan bukan
+kegagalan; selisih yang tidak bisa dijelaskan adalah kegagalan.
+
+Satu hal yang tidak boleh dilakukan saat membandingkan: **jangan menulis query
+pembanding di produksi setelah toko mulai berjualan.** Transaksi, movement, dan
+`audit_logs` akan terus bertambah, sehingga angka produksi selalu lebih besar
+dari backup dan tidak ada selisih yang bisa disimpulkan. Jalankan perbandingan
+sebelum D5 dimulai, atau — bila terpaksa setelahnya — bandingkan hanya tabel
+katalog (`products`, `categories`, `units_of_measure`) dan akui bahwa tabel
+transaksi memang tidak akan cocok.
+
+Dua hal yang **tidak** dibuktikan oleh uji ini, dan jangan diklaim:
+
+- **Bukan uji pemulihan bencana.** Ini restore ke project baru dari backup yang
+  baru saja dibuat. Yang terbukti: backup memuat data dan bisa dipulihkan.
+  Yang tidak terbukti: berapa lama restore berjalan saat database sudah besar,
+  dan apakah prosedur ini bisa dijalankan orang lain tanpa pendamping.
+- **Bukan uji `auth`.** Jumlah baris `profiles` ikut dibandingkan, tetapi
+  login sungguhan ke project uji tidak dicoba (memang tidak perlu). Jadi jangan
+  menulis "login terbukti pulih" di `docs/PROGRESS.md`.
+
+**Sesudah lulus:**
+
+- Catat timestamp backup, ref project uji, dan kedua angka di
+  `docs/PROGRESS.md`. Itu bukti D1a, bukan ingatan.
+- **Hapus project uji** setelah angka tercatat. Menyimpannya sebagai lingkungan
+  latihan berarti membayar compute sebesar produksi untuk project yang Auth
+  settings dan API key-nya belum dikonfigurasi, jadi itu keputusan terpisah,
+  bukan lanjutan otomatis dari D1a. Project uji memuat salinan tabel `auth` —
+  termasuk kata sandi owner dalam bentuk hash — jadi jangan bagikan URL atau
+  kuncinya, dan jangan pernah mengarahkan `.env` Vercel produksi ke sana.
+- Jangan mengubah apa pun di project uji setelah verifikasi; kalau perlu diuji
+  ulang, restore baru lebih jujur daripada project yang sudah dipakai
+  bermain.
+
+### 5.6 Jebakan paket gratis
 
 Selain tanpa backup, paket gratis **menjeda project yang aktivitas database-nya
 terlalu rendah selama 7 hari**. Untuk toko yang tutup seminggu (libur Lebaran,
@@ -637,7 +786,8 @@ sebelum jam buka toko dan tandai transaksinya agar bisa dikenali.
 - [x] Tahap A (A1–A3) selesai di preview, 4 November 2026 — `docs/22` §11
 - [ ] D1 project produksi dibuat, region Singapore, ref dicatat
 - [x] D1a pilihan backup tertulis (paket berbayar, 4 November 2026)
-- [ ] D1a satu restore ke project uji terbukti
+- [ ] D1 dibuat minimal sehari sebelum D5, supaya ada backup yang memuat data D4
+- [ ] D1a satu restore ke project uji terbukti (cara di §5.5, dijalankan setelah D4)
 - [ ] D1b env Vercel produksi terpasang **sebelum** build
 - [ ] D1b Site URL + Redirect URLs menunjuk domain produksi
 - [ ] D1b HSTS `includeSubDomains` hanya setelah domain sendiri ada
@@ -659,4 +809,8 @@ sebelum jam buka toko dan tandai transaksinya agar bisa dikenali.
   email/jam, best-effort) tidak cukup untuk reset kata sandi mandiri; selama
   belum ada SMTP, semua komunikasi akun lewat owner (lihat §8).
 - Domain kustom dan sertifikat. Dibahas di §4.3 saat domain sudah ada.
+- Memindahkan aplikasi ke project hasil restore. §5.5 hanya membuktikan backup
+  bisa dipulihkan dan isinya cocok; kalau suatu hari project produksi benar-benar
+  hilang, langkah memindahkan Vercel env, Auth settings, dan domain ke project
+  baru adalah prosedur tersendiri yang belum ditulis dan belum diuji.
 - Pelatihan lanjutan dan SOP toko. Itu di luar repo ini.
