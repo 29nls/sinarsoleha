@@ -87,4 +87,4 @@ Setiap run E2E mengonsumsi stok fixture (pay: 2, idem: 1) dan membuat nota baru 
 - Checkout diaktifkan; aktif ↔ dinonaktifkan via `hostedCheckoutEnabled` di `app/pages/cashier/index.vue`.
 - Race tes browser tidak menguji konkurensi paralel (Playwright workers=1); jaminan parallel tetap dari suite hosted dan `FOR UPDATE`.
 - Keputusan bisnis terbuka (diskon, refund, jendela void, bukti QRIS) tetap dicatat di `docs/07-transaction-engine.md` bagian 16.
-- Phase 5 (opname/realtime laporan) belum dimulai.
+- Phase 5 opname sudah dijalankan di preview 4 November 2026 (`docs/22` §11); realtime laporan masih seperti yang dicatat di `docs/18`.

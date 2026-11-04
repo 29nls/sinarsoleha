@@ -179,7 +179,7 @@ function statusClass(value: string): string {
       </dl>
 
       <p
-        v-if="detail.itemCount > 0"
+        v-if="detail.itemCount > 0 && editable"
         class="text-[11px]"
         :class="detail.readyForSubmit ? 'text-[#0b5a4f]' : 'text-[var(--color-muted)]'"
       >

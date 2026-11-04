@@ -1,13 +1,15 @@
 # 21 — Kesiapan Hosted Phase 5E.1
 
 Status per 4 November 2026: **tiga migrasi Phase 5E sudah diterapkan ke preview
-(23/23), regresi read-only 11/11 lulus, dan delapan fixture aktif sudah
-diarsipkan. Staf B belum ada.**
+(23/23), regresi read-only 11/11 lulus, delapan fixture aktif sudah diarsipkan,
+dan Phase 5F sudah dijalankan.** Staf B ada dan terverifikasi 8/8; latihan
+opname nyata selesai di preview (`docs/22` §11).
 
-Tidak ada gate approval yang tersisa. Gate migrasi dijalankan dengan frasa
-`APPROVE PHASE 5E MIGRATIONS TO PREVIEW`; gate arsip dijalankan terpisah dengan
-frasa `APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES`. Langkah owner berikutnya
-adalah membuat `INVENTORY_STAFF_B`; Phase 5F belum dimulai.
+Tidak ada gate approval yang tersisa di dokumen ini. Gate migrasi dijalankan
+dengan frasa `APPROVE PHASE 5E MIGRATIONS TO PREVIEW`; gate arsip dijalankan
+terpisah dengan frasa `APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES`; gate Phase 5F
+dijalankan dengan frasa `APPROVE PHASE 5F REAL STOCK OPNAME ON PREVIEW`. Langkah
+berikutnya adalah Tahap 4 (produksi) di `docs/24`.
 
 ## 1. Guardrail
 
@@ -247,8 +249,9 @@ Kesiapan dua orang **belum** boleh diklaim sampai akun itu ada dan terverifikasi
 | Audit ulang fixture | selesai — 8 identitas sama |
 | Audit pasca-arsip | selesai — A=0, B=13, C=0, D=35; 48 fixture |
 | Pengarsipan 8 fixture | **selesai** — 8 nonaktif, 0 aktif |
-| Staf B | menunggu owner membuat akun |
+| Staf B | **selesai** — `phase5f.staffb@sinarsoleha.com`, verifikasi 8/8 |
 | Suite mutasi 5D / E2E | menunggu otorisasi tertulis terpisah |
+| Phase 5F | **selesai di preview** — 4 November 2026, `docs/22` §11 |
 | Produksi | tidak disentuh |
 
 ## 11. Tugas berikutnya
@@ -256,7 +259,7 @@ Kesiapan dua orang **belum** boleh diklaim sampai akun itu ada dan terverifikasi
 1. Migrasi sudah diterapkan dan tervalidasi; pertahankan 23/23 dan ulangi
    regresi read-only setelah setiap perubahan schema.
 2. Arsip fixture sudah selesai; jangan mengaktifkan kembali tanpa keputusan owner.
-3. Owner membuat `INVENTORY_STAFF_B` dan memverifikasi aksesnya.
-4. Setelah staf B ada dan terverifikasi, Phase 5F — stok opname fisik nyata.
+3. Phase 5F sudah selesai di preview; langkah berikutnya adalah Tahap 4 —
+   cutover produksi di `docs/24` (D1 project, D1a restore, D3 akun owner).
    Runbook eksekusi, gate, dan kriteria lulus ada di
    `docs/22-phase-5f-stock-opname-runbook.md`.

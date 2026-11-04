@@ -1784,7 +1784,8 @@ Tahap 1 (repo) selesai dan sudah di-commit (`2ae64c8`) serta di-push ke
 
 Keputusan b mengubah D1a: pilihan tertulis sudah ada, tetapi kriteria lulusnya
 belum — satu restore ke project uji masih harus dibuktikan sebelum D5. Tahap 3
-(gate Phase 5F) dan Tahap 4 (produksi) belum dimulai.
+(gate Phase 5F) sudah dijalankan 4 November 2026 (lihat bagian di bawah); Tahap 4
+(produksi) belum dimulai.
 
 ### Persiapan Tahap 3 (read-only)
 
@@ -1798,3 +1799,33 @@ Ditemukan satu batasan yang mengubah rencana konflik versi: `complete_sale` dan
 dipicu pada sesi **kedua** atas kategori yang sama, setelah sesi pertama
 menetapkan saldo awal. `docs/22` §5.0 dan §5.3 sudah diperbarui; tidak ada baris
 database yang ditulis.
+
+### Tahap 3 — Phase 5F dijalankan di preview (4 November 2026)
+
+Gate `APPROVE PHASE 5F REAL STOCK OPNAME ON PREVIEW` diterima, lalu latihan A2
+dijalankan dalam dua sesi pada kategori `PERABOTAN MANGKUK` (18 produk):
+
+| | L1 | L2 |
+| --- | --- | --- |
+| Sesi | `OP-20261104-0058` | `OP-20261104-0059` |
+| Item | 18 | 18 |
+| Hasil | `posted`, 18 `opening_balance`, delta 54, 0 selisih | `version_conflict` → recount → `posted`, 0 selisih |
+
+Konflik versi dibuktikan nyata: `PER-M1128` dijual 1 unit lewat kasir
+(`SS-20261104-0007`) setelah item itu dihitung, sehingga post pertama
+mengembalikan `version_conflict` (snapshot 3/versi 1 vs stok 2/versi 2), sesi
+kembali `counting`, approval direset, dan item menjadi `needs_recount`. Recount
+me-rebase snapshot ke stok live; post kedua `posted` tanpa menulis stok lagi.
+
+Baseline bergeser tepat sesuai perhitungan: baris berstok 35 → 53, jumlah stok
+377 → 430 (+54 −1), jumlah versi 76 → 95 (+18 +1), movement 104 → 123 (+19),
+opname 58 → 60, item 2.802 → 2.838, log selisih tetap 13, 0 fixture aktif.
+Regresi read-only `npm run test:hosted:opname` 11/11 lulus setelah drill.
+
+Verifikasi UI manual menemukan satu cacat: panel tindakan menampilkan "siap
+disubmit" pada sesi `posted`. Sudah diperbaiki di `OpnameActionPanel.vue`
+(petunjuk hanya muncul saat sesi masih dapat diedit); tes opname 70/70, seluruh
+suite 288/288, dan `npm run typecheck` lulus.
+
+Bukti lengkap: `docs/22` §11. Tahap A di `docs/23` §2 dan §8 sudah ditandai
+selesai. Produksi belum disentuh; Tahap 4 menunggu D1/D1a/D3 dari owner.

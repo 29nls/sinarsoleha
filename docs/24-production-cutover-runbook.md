@@ -7,6 +7,10 @@ belum diambil. Empat keputusan owner sudah masuk (lihat `docs/23` §6.1): backup
 paket berbayar, latihan opname kecil di preview dulu, kata sandi lewat
 dashboard, isi nota tidak berubah.
 
+Prasyarat Tahap A sudah lunas: latihan opname kecil di preview selesai 4 November
+2026, termasuk konflik versi yang dipicu sengaja (`docs/22` §11). Yang belum ada
+hanya project produksi dan keputusan D1a.
+
 Pendamping: `docs/23` §5 (tahap D), `docs/22` (opname), `docs/16` §5 (UAT),
 `docs/17` (akun), `docs/03` §3 (bootstrap owner).
 
@@ -502,9 +506,10 @@ review sudah diselesaikan; itu **hasil akhir**, bukan keluaran satu kali
 
 Ini satu-satunya langkah yang menghasilkan angka stok, dan aturannya mutlak:
 **angka berasal dari hitungan fisik di toko, bukan dari preview.** Menyalin
-saldo preview berarti mengimpor kesalahan preview (di preview, 1.374 produk
-berstok `NULL` dan 13 baris `stock_discrepancy_logs`), dan membuat selisih
-opname pertama tidak berarti apa-apa.
+saldo preview berarti mengimpor kesalahan preview (di preview, 1.343 dari 1.361
+produk aktif masih berstok `NULL`, 18 sisanya hanya berisi angka latihan A2, dan
+ada 13 baris `stock_discrepancy_logs`), dan membuat selisih opname pertama tidak
+berarti apa-apa.
 
 ### 7.1 Bentuk pekerjaan
 
@@ -519,7 +524,9 @@ Konsekuensinya:
 ### 7.2 Urutan yang disarankan
 
 1. Satu sesi **kecil** di preview (satu kategori, ~20 produk) untuk memastikan
-   staf paham alur. Ini bagian dari Tahap 3, bukan produksi.
+   staf paham alur. Ini bagian dari Tahap 3, bukan produksi — **sudah selesai 4
+   November 2026** (`OP-20261104-0058` dan `-0059`, lihat `docs/22` §11). Di
+   produksi, latihan ini tidak diulang; D5 langsung memakai alur yang sama.
 2. Di produksi, bagi rak menjadi beberapa sesi (mis. per kategori/rak), bukan
    satu sesi 1.361 baris. Sesi besar lebih mudah konflik versi dan lebih sulit
    diulang bila ada kesalahan hitung.
@@ -627,6 +634,7 @@ sebelum jam buka toko dan tandai transaksinya agar bisa dikenali.
 
 ## 10. Checklist ringkas (cetak dan centang)
 
+- [x] Tahap A (A1–A3) selesai di preview, 4 November 2026 — `docs/22` §11
 - [ ] D1 project produksi dibuat, region Singapore, ref dicatat
 - [x] D1a pilihan backup tertulis (paket berbayar, 4 November 2026)
 - [ ] D1a satu restore ke project uji terbukti

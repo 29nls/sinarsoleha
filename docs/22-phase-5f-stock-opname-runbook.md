@@ -1,11 +1,12 @@
 # 22 — Runbook Phase 5F: Stok Opname Fisik Nyata
 
-Status per 4 November 2026: **BELUM DIMULAI.** Runbook ini disiapkan agar
-Phase 5F bisa dijalankan tanpa keputusan yang belum diambil saat hari-H.
+Status per 4 November 2026: **SELESAI DI PREVIEW.** Gate A1 diterima, latihan A2
+dijalankan dalam dua sesi pada kategori `PERABOTAN MANGKUK`, dan verifikasi A3
+(§6.1–6.8) lulus. Bukti lengkap ada di §11. Produksi belum disentuh; hitungan
+fisik penuh tetap menjadi D5 di `docs/24`.
 
-Prasyarat akun sudah terpenuhi: `INVENTORY_STAFF_B`
-(`phase5f.staffb@sinarsoleha.com`) ada dan terverifikasi 8/8. Satu-satunya
-blocker tersisa adalah frasa gate dari owner.
+Prasyarat akun terpenuhi: `INVENTORY_STAFF_B`
+(`phase5f.staffb@sinarsoleha.com`) ada dan terverifikasi 8/8.
 
 ## 1. Definisi selesai
 
@@ -256,8 +257,89 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Regresi read-only | 11/11 lulus — `npm run test:hosted:opname`, exit 0 |
 | Verifikasi staf B | **8/8 lulus** — `npm run test:hosted:opname:staff-b`, exit 0 |
 | Staf B | **ada & aktif** — `phase5f.staffb@sinarsoleha.com`, `4ba5012e-7e53-4f85-892d-27524eb8071a` |
-| Gate Phase 5F | belum diminta — **satu-satunya blocker tersisa** |
-| Cakupan A2 | dipilih: kategori `PERABOTAN MANGKUK` (id 131), 18 produk aktif, semua berstok `NULL` — lihat §5.0 |
-| Sesi opname nyata | belum dibuat |
-| Posting | belum dilakukan |
+| Gate Phase 5F | **diterima** — owner mengetik frasa A1 persis, 4 November 2026 |
+| Cakupan A2 | kategori `PERABOTAN MANGKUK` (id 131), 18 produk aktif — lihat §5.0 |
+| Sesi opname nyata | **2 sesi, keduanya `posted`** — `OP-20261104-0058` (L1) dan `OP-20261104-0059` (L2) |
+| Posting | **selesai** — 18 movement `opening_balance`, 0 penyesuaian, 0 log selisih baru |
+| Konflik versi | **terbukti** — `version_conflict` pada L2, recount me-rebase snapshot 3→2, posting kedua `posted` |
+| Verifikasi §6 | **8/8 lulus** — rincian di §11.3 |
+| Regresi setelah drill | 11/11 lulus ulang — `npm run test:hosted:opname` |
 | Produksi | tidak disentuh |
+
+## 11. Bukti pelaksanaan A2 (preview, 4 November 2026)
+
+Dijalankan setelah gate A1 diterima. Semua tulisan melewati RPC opname; tidak
+ada `DELETE`, tidak ada `UPDATE products.stock_on_hand`, tidak ada
+`service_role` di klien.
+
+### 11.1 Dua sesi
+
+| | L1 — saldo awal | L2 — konflik versi |
+| --- | --- | --- |
+| `opname_no` | `OP-20261104-0058` | `OP-20261104-0059` |
+| `id` | `c857ade8-a131-4eec-85ce-4582c4b1a9a3` | `a1155c71-d66b-4d26-a013-63ad8f18d451` |
+| Item | 18 | 18 |
+| Snapshot versi | 0 untuk 18 item (semua `NULL`) | 1 untuk 17 item, 2 untuk `PER-M1128` setelah recount |
+| Pembagian hitung | 9 staf B + 9 owner | 10 staf B + 8 owner |
+| Hasil post | `opening_balance_count = 18`, `delta_total = 54`, `discrepancy_count = 0` | `unchanged_count = 18`, `discrepancy_count = 0` |
+| Status akhir | `posted` 17:42:57Z | `posted` 17:45:01Z |
+
+Angka hitung latihan = **3 per produk**, bukan saldo fisik nyata. Setiap
+`reason_note` menyebut "Latihan A2 (preview): angka latihan, bukan saldo fisik
+nyata" supaya angka ini tidak pernah dikira hasil hitung gudang.
+
+### 11.2 Konflik versi yang terbukti
+
+1. `PER-M1128` (produk `0b14127f-0dd2-4e66-9719-81ec173146dc`, `sale_price`
+   6000) sengaja dibiarkan `pending` saat 17 item lain dihitung.
+2. Kasir menjual 1 unit lewat nota `SS-20261104-0007`
+   (transaksi `e19ff76c-9234-4a81-9993-65f5974f2c30`): movement id 125,
+   `sale_out`, `3 → 2`, versi `1 → 2`, aktor kasir.
+3. Item itu dihitung 2 lalu submit + approve + post. Post
+   mengembalikan `result = version_conflict`, sesi kembali `counting`,
+   `approved_at` dikosongkan, item menjadi `needs_recount`,
+   `snapshot_version 1 → current_version 2`, `snapshot_qty 3 → current_qty 2`,
+   dan **tidak ada** tulisan stok. Audit `opname.post_conflict` tercatat.
+4. Recount menyimpan 2; RPC me-rebase snapshot ke stok live (2, versi 2) sehingga
+   `difference_qty = 0`. Submit + approve + post kedua → `posted`.
+
+### 11.3 Verifikasi §6
+
+| # | Bukti | Hasil |
+| --- | --- | --- |
+| 6.1 | `/inventory`, filter `PER-M` | 18 produk latihan berstok; 17 baris `3`, satu baris `2` (`PER-M1128`). 35 baris berstok lain semuanya fixture `TEST-*` nonaktif, dan 1.356 produk lain berstok `NULL` — tidak ada yang berubah |
+| 6.2 | `/inventory/movements` | 18 movement `opening_balance` (id 107–124, `NULL → 3`, aktor owner) + 1 `sale_out` (id 125, aktor kasir). Filter `opening_balance` kini 53 baris, filter `sale_out` memuat nota latihan |
+| 6.3 | `/inventory/discrepancies` | tetap **13 baris** — latihan ini nol selisih, jadi tidak ada log baru |
+| 6.4 | Movement vs item | 18 movement untuk 18 item yang berubah; tidak ada movement yatim atau ganda |
+| 6.5 | `stock_version` | 17 item `+1` (0→1), `PER-M1128` `+2` (0→1 opening, 1→2 penjualan) |
+| 6.6 | Audit | `opname.create/submit/approve/post` untuk L1; `create/submit/approve/post_conflict/submit/approve/post` untuk L2; seluruhnya aktor owner |
+| 6.7 | Sesi `posted` | cancel ditolak `OPNAME_POSTED`, recount ditolak `OPNAME_NOT_COUNTING`, post ulang `already_posted`; UI tidak menawarkan tombol hitung, submit, atau batal |
+| 6.8 | Regresi read-only | `npm run test:hosted:opname` → 11/11 PASS, sesi `OP-20261104-0018` berakhir `cancelled` |
+
+### 11.4 Perbandingan baseline
+
+| Metrik | Sebelum | Sesudah | Selisih |
+| --- | --- | --- | --- |
+| Produk total / aktif | 1.409 / 1.361 | 1.409 / 1.361 | 0 |
+| Baris berstok | 35 | 53 | +18 |
+| Jumlah `stock_on_hand` | 377 | 430 | +54 − 1 |
+| Jumlah `stock_version` | 76 | 95 | +18 + 1 |
+| `stock_movements` | 104 | 123 | +18 + 1 |
+| `stock_opnames` | 58 | 60 | +2 |
+| `stock_opname_items` | 2.802 | 2.838 | +36 |
+| `stock_discrepancy_logs` | 13 | 13 | 0 |
+| Fixture `TEST-*`/`HOST-*` aktif | 0 | 0 | 0 |
+
+Seluruh selisih cocok dengan perhitungan tertulis sebelum drill. Tidak ada baris
+produk yang ditambah atau dihapus.
+
+### 11.5 Catatan UI
+
+Verifikasi manual di browser (`npm run dev`, port 49298) menunjukkan kedua sesi
+`TERPOSTING` di `/stock-opname`, detail L1 menampilkan `NULL` + alasan `Saldo
+awal`, detail L2 menampilkan `2/2` untuk `PER-M1128`, dan tidak ada error konsol.
+
+Satu cacat ditemukan dan diperbaiki: panel tindakan menampilkan "Semua item
+lengkap dan siap disubmit" pada sesi yang sudah `posted`. Kalimat itu sekarang
+dihitung hanya saat sesi masih dapat diedit (`OpnameActionPanel.vue`), dan
+sesi `counting` tetap menampilkan petunjuk yang benar.

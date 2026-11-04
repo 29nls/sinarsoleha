@@ -15,14 +15,15 @@ lunak. Tahap C berjalan paralel dengan B; Tahap D menunggu keduanya.
 | Metrik | Nilai | Arti |
 | --- | --- | --- |
 | Produk aktif | 1.361 | katalog siap |
-| Stok terisi | **0** | belum ada saldo |
-| Stok `NULL` | **1.361** | kasir menolak menjual |
+| Stok terisi | **18** | semuanya produk latihan A2, bukan saldo nyata |
+| Stok `NULL` | **1.343** | kasir menolak menjual |
 | Project Supabase | **1** (preview) | produksi belum ada |
 | Migrasi tersinkron | 23/23 | skema siap |
 
-Kesimpulan: **hari ini toko belum bisa menjual satu barang pun.** Kasir menolak
-produk berstok `NULL`, dan seluruh katalog masih `NULL`. Ini bukan cacat —
-saldo memang harus berasal dari hitungan fisik, bukan dari angka yang dikarang.
+Kesimpulan: **toko belum bisa berjualan sungguhan.** 1.343 dari 1.361 produk
+aktif masih berstok `NULL`, dan 18 yang terisi hanya berisi angka latihan A2
+(3 per produk, satu produk 2 karena satu unit terjual saat drill). Saldo nyata
+harus berasal dari hitungan fisik di produksi (D5), bukan dari angka ini.
 
 ## 2. Tahap A — Gerbang teknis (≈1 jam)
 
@@ -32,13 +33,17 @@ keraguan apakah posting menghasilkan saldo dan ledger yang konsisten.
 | # | Langkah | Pemilik | Kriteria lulus |
 | --- | --- | --- | --- |
 | A1 | Ketik frasa gate `APPROVE PHASE 5F REAL STOCK OPNAME ON PREVIEW` | Owner | frasa diterima persis |
-| A2 | Jalankan satu sesi opname kecil (satu kategori atau ±20 produk) mengikuti `docs/22` §5 | Owner + staf A/B | sesi berstatus `posted`, tanpa item `needs_recount` |
-| A3 | Verifikasi pasca-posting `docs/22` §6.1–6.8 | Teknis | 8/8 butir benar, regresi read-only tetap 11/11 |
+| A2 | Jalankan satu sesi opname kecil (satu kategori atau ±20 produk) mengikuti `docs/22` §5 | Owner + staf A/B | **selesai 4 Nov 2026** — `OP-20261104-0058` dan `OP-20261104-0059` `posted`, 0 `needs_recount` |
+| A3 | Verifikasi pasca-posting `docs/22` §6.1–6.8 | Teknis | **selesai** — 8/8 butir benar, regresi read-only 11/11 |
 
 Catatan A2: sengaja **kecil**, bukan seluruh katalog. Tujuannya membuktikan
 mekanisme, bukan menyelesaikan pekerjaan gudang. Konflik versi (§5.3) tetap
 wajib dipicu sekali di sini, dan itu butuh **dua** sesi: sesi pertama menetapkan
 saldo awal, sesi kedua memicu konflik setelah produknya berstok.
+
+Hasilnya: konflik benar-benar terjadi (`version_conflict` pada `PER-M1128`
+setelah penjualan 1 unit), recount me-rebase snapshot, dan posting kedua
+`posted` dengan selisih nol. Bukti angka sebelum/sesudah ada di `docs/22` §11.
 
 ## 3. Tahap B — Saldo awal (3–5 hari kerja)
 
@@ -256,7 +261,7 @@ Sengaja tidak dimasukkan karena bukan syarat go-live:
 
 Proyek dinyatakan siap pakai bila seluruh butir ini benar:
 
-- [ ] A1–A3 selesai; satu sesi opname nyata berstatus `posted` dan terverifikasi
+- [x] A1–A3 selesai; satu sesi opname nyata berstatus `posted` dan terverifikasi (preview, 4 November 2026 — `docs/22` §11)
 - [ ] B2 selesai; 0 produk aktif berstok `NULL`
 - [ ] C1–C4 selesai; `disable_signup: true`, header keamanan terpasang, rate limit terbukti
 - [ ] C5 tuntas: backup produksi diputuskan (D1a) **dan** satu restore ke project uji dibuktikan, bukan hanya replay migrasi

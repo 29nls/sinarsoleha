@@ -132,6 +132,10 @@ sehingga filter `pending` menampilkan jumlah global, bukan jumlah di halaman.
 - **E2E browser hosted sudah ada** (`e2e/stock-opname.spec.mjs`, `npm run test:e2e:inventory`): 17 skenario dengan tiga konteks terpisah — kasir ditolak, staf membuat/menghitung/mensubmit, owner menyetujui/memposting, saldo dan histori di `/inventory`, laporan selisih, sesi terposting tidak dapat diedit, sesi dibatalkan tidak mengubah stok, dan konflik versi muncul sebagai panel recount. Rincian di `docs/19-inventory-hosted-validation.md`.
 - **Posting bersifat final** dan belum ada pembalik (reversal); koreksi
   dilakukan lewat sesi opname baru.
+- **Petunjuk submit hanya untuk sesi yang dapat diedit.** Verifikasi A2 di
+  preview menemukan kalimat "siap disubmit" masih tampil pada sesi `posted`;
+  `OpnameActionPanel.vue` sekarang menghitungnya hanya saat `editable`, dan
+  sesi `counting` tetap menampilkan petunjuk yang benar (`docs/22` §11.5).
 - **Tanpa Realtime**: dua operator yang membuka sesi sama tidak saling melihat
   hitungan sampai halaman dimuat ulang. Konflik tetap aman karena posting
   membandingkan `stock_version`.

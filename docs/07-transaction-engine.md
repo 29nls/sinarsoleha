@@ -206,7 +206,7 @@ Migrasi `20261103110000_transaction_engine.sql`:
 
 ## 17. Fase berikutnya
 
-Phase 4B sudah membuat UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah fixture stok dan kasir kedua tersedia, jalankan uji konkurensi dua sesi dan suite hosted sebelum menganggap Phase 4 selesai. Phase 5 (opname dan Realtime) belum dimulai.
+Phase 4B sudah membuat UI kasir yang memanggil RPC ini, mempertahankan keranjang saat gagal, dan menampilkan nota. Setelah fixture stok dan kasir kedua tersedia, jalankan uji konkurensi dua sesi dan suite hosted sebelum menganggap Phase 4 selesai. Phase 5 (opname dan Realtime) sudah berjalan: opname nyata dibuktikan di preview 4 November 2026 (`docs/22` §11).
 
 ## 18. Integrasi UI kasir Phase 4B
 
