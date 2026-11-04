@@ -1871,3 +1871,9 @@ kosong bisa lulus uji restore palsu. Dibuktikan dengan skrip terpisah (23
 migrasi, tabel kosong → `sidik_katalog: null`), lalu query di §5.5 diberi
 `coalesce(..., 'KOSONG')` dan kriteria lulusnya menuntut `produk = 1.361`, bukan
 nol.
+
+Saat menyisir rujukan, checklist go-live di `docs/23` ternyata masih meminta
+hanya "paket backup tertulis" untuk D1a — lebih longgar daripada tabel D1a dan
+§6.1 butir b, yang sudah menuntut satu restore terbukti. Checklist diperbaiki
+agar tidak bisa ditandatangani tanpa bukti restore (`f9aee45`). Tidak ada
+perubahan kode aplikasi di sesi ini; Vercel `success`.
