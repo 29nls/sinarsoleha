@@ -120,7 +120,7 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
 ### 5.1 Persiapan
 
 - [ ] `npm run build` dan `npm run audit:bundle` bersih.
-- [ ] `npm run test:db` 83/83 dan `npm test` 251/251.
+- [ ] `npm run test:db` 88/88 dan `npm test` 257/257.
 - [x] Migrasi 5A + Broadcast diterapkan ke preview setelah persetujuan owner
       (setara `APPROVE PHASE 5A MIGRATION TO PREVIEW`), 4 November 2026.
 - [ ] Tiga akun uji aktif: owner, kasir, staf gudang; satu akun nonaktif.

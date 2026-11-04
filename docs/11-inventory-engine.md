@@ -256,8 +256,12 @@ Sebelum apply ke preview:
 
 Risiko/pekerjaan terbuka:
 
-- `adjust_stock` (manual adjustment) masih kontrak, belum diimplementasikan.
-- UI opname (Phase 5B) belum ada; RPC belum dipanggil dari aplikasi.
+- `adjust_stock` selesai di Phase 11 (migrasi `20261106100000_stock_adjustment.sql`):
+  hanya `owner`/`inventory_staff`, alasan wajib, catatan wajib, presisi mengikuti
+  satuan, hasil negatif ditolak, ledger + audit + idempotensi. Belum diterapkan
+  ke preview saat catatan ini ditulis.
+- Koreksi manual **tidak** dapat dipakai untuk produk berstok NULL; jalurnya tetap
+  opname saldo awal.
 - Keputusan bisnis: siapa boleh membatalkan draf milik staff, apakah staff boleh
   melihat seluruh sesi atau hanya miliknya, dan kebijakan recount berulang.
 - Konkurensi multi-sesi nyata (PostgREST) belum diuji; jaminan berasal dari

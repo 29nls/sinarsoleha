@@ -115,16 +115,21 @@ Payload rename/deactivate:
 - Mengembalikan baris kategori sebagai JSON.
 - Wrapper `public` hanya memberi `EXECUTE` ke `authenticated`; pemeriksaan owner tetap di fungsi `private`.
 
-## 5. `public.adjust_stock(p_product_id uuid, p_delta numeric, p_reason_code text, p_reason_note text) returns jsonb` (belum diimplementasikan)
+## 5. `public.adjust_stock(p_product_id uuid, p_delta numeric, p_reason_code text, p_reason_note text, p_idempotency_key uuid default null) returns jsonb`
 
-Kontrak ini **belum** punya implementasi; belum ada fungsi `public.adjust_stock` di
-database. Jangan panggil dari UI sebelum migrasi berikutnya.
+Diimplementasikan di migrasi `20261106100000_stock_adjustment.sql` (Phase 11):
+`private.adjust_stock(...)` + wrapper `public` tipis. `p_idempotency_key` adalah
+parameter tambahan opsional; pemanggil lama tanpa kunci tetap sah.
 
-- `owner` atau `inventory_staff`; `p_delta <> 0`; `reason_code` dari 8 nilai yang diizinkan; `other` wajib catatan.
-- Kunci produk; `stock_on_hand` harus diketahui (NULL → gunakan opname opening balance, bukan adjustment).
-- Hitung `quantity_after = before + delta`; tolak hasil negatif kecuali owner dengan alasan `input_error` (keputusan owner masih terbuka).
-- Insert movement `manual_adjustment`, update saldo/versi, audit `stock.adjust`.
-- Kembalikan saldo sebelum/sesudah dan id movement.
+- `owner` atau `inventory_staff`; `p_delta <> 0`; `reason_code` dari 7 nilai yang diizinkan — `opening_balance` **ditolak** karena saldo tak diketahui harus lewat opname.
+- `reason_note` wajib untuk semua koreksi (constraint `stock_movements_manual_reason` mensyaratkannya untuk `manual_adjustment`), maksimal 500 karakter.
+- Kunci produk (`FOR UPDATE`); `stock_on_hand` NULL ditolak `STOCK_UNKNOWN`.
+- Presisi delta mengikuti `units_of_measure.decimal_scale` produk; delta yang berubah setelah pembulatan ditolak `INVALID_PRECISION`.
+- `quantity_after = before + delta`; hasil negatif ditolak `STOCK_NEGATIVE` untuk semua peran — koreksi tidak boleh membuat saldo negatif.
+- Insert movement `manual_adjustment` (tanpa `transaction_id`/`stock_opname_id`), update `stock_on_hand` + `stock_version`, audit `stock.adjust` berisi saldo sebelum/sesudah dan id movement.
+- Idempotensi: kunci yang sama mengembalikan baris movement yang sudah ada dengan `already_processed: true`; kunci sama dengan produk/delta berbeda ditolak `IDEMPOTENCY_KEY_REUSED`.
+- Respons: `product_id`, `sku`, `stock_before`, `stock_after`, `delta`, `stock_version`, `reason_code`, `reason_note`, `movement_id`, `already_processed`.
+- Wrapper `public` hanya memberi `EXECUTE` ke `authenticated`; `anon` ditolak.
 
 ## Yang sudah tersedia untuk fase berikutnya
 

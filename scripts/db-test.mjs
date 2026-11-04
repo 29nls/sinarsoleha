@@ -2142,6 +2142,164 @@ async function runOpnameTests() {
   })
 }
 
+// ============================================================================
+// Phase 11 — manual stock adjustment
+// ============================================================================
+
+const adjustStock = (productId, delta, reason, note, key = null, role = 'authenticated', userId = OWNER) =>
+  rpcAs(
+    role,
+    userId,
+    'select public.adjust_stock($1,$2,$3,$4,$5) as r',
+    [productId, delta, reason, note, key],
+  )
+
+async function adjustMovement(productId, key) {
+  const result = await db.query(
+    `select id, movement_type, quantity_delta, quantity_before, quantity_after,
+            reason_code, reason_note, actor_id, transaction_id, stock_opname_id
+       from public.stock_movements
+      where product_id = $1 and idempotency_key = $2`,
+    [productId, key],
+  )
+  return result.rows[0]
+}
+
+async function runAdjustmentTests() {
+  // ===== GROUP J — MANUAL ADJUSTMENT =====
+
+  await test('J1 — anon, cashier and inactive accounts cannot adjust stock', async () => {
+    const productId = await opnameProduct('ADJ-J1', { stock: 5 })
+    await expectRpcError('42501', 'anon', null, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, 1, 'input_error', 'uji', null,
+    ])
+    await expectRpcError('42501', 'authenticated', CASHIER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, 1, 'input_error', 'uji', null,
+    ])
+    await expectRpcError('42501', 'authenticated', INACTIVE, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, 1, 'input_error', 'uji', null,
+    ])
+    assert(Number((await productState(productId)).stock_on_hand) === 5, 'rejected call still moved stock')
+  })
+
+  await test('J2 — owner and inventory staff may adjust, ledger and audit agree', async () => {
+    const productId = await opnameProduct('ADJ-J2', { stock: 10, version: 2 })
+    const key = randomUUID()
+    const result = await adjustStock(productId, 3, 'unrecorded_in', 'Temuan barang di gudang', key)
+
+    assert(Number(result.stock_before) === 10, 'wrong before balance')
+    assert(Number(result.stock_after) === 13, 'wrong after balance')
+    assert(Number(result.delta) === 3, 'wrong delta')
+    assert(result.already_processed === false, 'first adjustment flagged as replay')
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 13, 'product balance was not updated')
+    assert(Number(state.stock_version) === 3, 'stock_version did not advance by one')
+
+    const movement = await adjustMovement(productId, key)
+    assert(movement.movement_type === 'manual_adjustment', `unexpected type ${movement.movement_type}`)
+    assert(Number(movement.quantity_delta) === 3, 'movement delta wrong')
+    assert(Number(movement.quantity_before) === 10, 'movement before wrong')
+    assert(Number(movement.quantity_after) === 13, 'movement after wrong')
+    assert(movement.reason_code === 'unrecorded_in', 'movement reason wrong')
+    assert(movement.reason_note === 'Temuan barang di gudang', 'movement note lost')
+    assert(movement.actor_id === OWNER, 'movement actor wrong')
+    assert(movement.transaction_id === null && movement.stock_opname_id === null, 'movement reference must be empty')
+
+    const audits = await db.query(
+      `select before_data, after_data, reason from public.audit_logs
+        where entity_id = $1 and action_key = 'stock.adjust'`,
+      [productId],
+    )
+    assert(audits.rows.length === 1, 'expected exactly one audit row')
+    assert(Number(audits.rows[0].before_data.stock_on_hand) === 10, 'audit before wrong')
+    assert(Number(audits.rows[0].after_data.stock_on_hand) === 13, 'audit after wrong')
+    assert(Number(audits.rows[0].after_data.movement_id) === Number(movement.id), 'audit lost movement id')
+
+    const staffProduct = await opnameProduct('ADJ-J2S', { stock: 4 })
+    const staffResult = await adjustStock(
+      staffProduct, -1, 'broken_damaged', 'Pecah saat dipajang', null, 'authenticated', WAREHOUSE,
+    )
+    assert(Number(staffResult.stock_after) === 3, 'staff adjustment failed')
+  })
+
+  await test('J3 — zero, unknown stock, negative result and bad precision are rejected', async () => {
+    const productId = await opnameProduct('ADJ-J3', { stock: 5 })
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, 0, 'input_error', 'nol', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      PRODUCT_NULL, 1, 'unrecorded_in', 'uji', null,
+    ])
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, -6, 'missing', 'melebihi saldo', null,
+    ])
+
+    // PCS has decimal_scale 0, so a fractional delta must be refused.
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, 0.5, 'input_error', 'pecahan', null,
+    ])
+
+    // METER allows three decimals, so the same delta is fine there.
+    const meter = await db.query(`select id from public.units_of_measure where code = 'METER'`)
+    const meterProduct = await db.query(
+      `insert into public.products (sku, name, unit_id, sale_price, stock_on_hand)
+       values ('ADJ-J3M', 'Produk Meter', $1, 1000, 2.5) returning id`,
+      [meter.rows[0].id],
+    )
+    const ok = await adjustStock(meterProduct.rows[0].id, 0.25, 'unit_conversion', 'Sisa potongan', null)
+    assert(Number(ok.stock_after) === 2.75, 'decimal adjustment failed')
+
+    assert(Number((await productState(productId)).stock_on_hand) === 5, 'a rejected call moved stock')
+  })
+
+  await test('J4 — reason code and note are mandatory and validated', async () => {
+    const productId = await opnameProduct('ADJ-J4', { stock: 5 })
+    const adjust = (delta, reason, note) =>
+      expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+        productId, delta, reason, note, null,
+      ])
+
+    await adjust(1, null, 'catatan')
+    await adjust(1, '   ', 'catatan')
+    await adjust(1, 'entah', 'catatan')
+    // opening_balance is an opname-only reason.
+    await adjust(1, 'opening_balance', 'catatan')
+    // manual_adjustment always needs a note, even for reasons other than other.
+    await adjust(1, 'missing', null)
+    await adjust(1, 'missing', '   ')
+    await adjust(1, 'missing', 'x'.repeat(501))
+    assert(Number((await productState(productId)).stock_on_hand) === 5, 'a rejected call moved stock')
+  })
+
+  await test('J5 — retries are idempotent and a reused key with other input is refused', async () => {
+    const productId = await opnameProduct('ADJ-J5', { stock: 8 })
+    const key = randomUUID()
+    const first = await adjustStock(productId, -2, 'broken_damaged', 'Retak', key)
+    const replay = await adjustStock(productId, -2, 'broken_damaged', 'Retak', key)
+
+    assert(first.already_processed === false, 'first call flagged as replay')
+    assert(replay.already_processed === true, 'retry was not detected')
+    assert(Number(replay.movement_id) === Number(first.movement_id), 'retry created another movement')
+    assert(Number((await productState(productId)).stock_on_hand) === 6, 'retry applied the delta twice')
+
+    const movements = await db.query(
+      `select count(*)::int as n from public.stock_movements where product_id = $1`,
+      [productId],
+    )
+    assert(movements.rows[0].n === 1, 'retry duplicated the ledger row')
+    const audits = await db.query(
+      `select count(*)::int as n from public.audit_logs where entity_id = $1 and action_key = 'stock.adjust'`,
+      [productId],
+    )
+    assert(audits.rows[0].n === 1, 'retry duplicated the audit row')
+
+    await expectRpcError('22023', 'authenticated', OWNER, 'select public.adjust_stock($1,$2,$3,$4,$5)', [
+      productId, -3, 'broken_damaged', 'Retak', key,
+    ])
+  })
+}
+
 async function runRealtimeTests() {
   await test('H1 — stock update broadcasts a minimal private payload', async () => {
     await db.exec('delete from realtime.messages')
@@ -2241,7 +2399,7 @@ async function runSecurityTests() {
          join pg_namespace n on n.oid = p.pronamespace
         where n.nspname = 'public'`,
     )
-    assert(result.rows.length >= 17, `only ${result.rows.length} public functions found`)
+    assert(result.rows.length >= 18, `only ${result.rows.length} public functions found`)
     for (const row of result.rows) {
       assert(row.prosecdef === true, `${row.signature} is not SECURITY DEFINER`)
       assert(
@@ -2340,6 +2498,7 @@ async function main() {
   await seed()
   await runTests()
   await runOpnameTests()
+  await runAdjustmentTests()
   await runRealtimeTests()
   await runSecurityTests()
 

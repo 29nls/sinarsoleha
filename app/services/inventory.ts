@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '~/types/database'
 import type {
+  AdjustmentResult,
   DiscrepancyParams,
   DiscrepancyRow,
   InventoryListResult,
@@ -339,5 +340,55 @@ export async function listStockDiscrepancies(
       createdAt: row.created_at,
     })),
     total: count ?? 0,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Manual adjustment (Phase 11)
+// ---------------------------------------------------------------------------
+
+function num(value: unknown): number {
+  return typeof value === 'number' ? value : Number(value ?? 0)
+}
+
+function str(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+/**
+ * Calls `public.adjust_stock`. The RPC is the only path that may move stock
+ * outside a sale or an opname posting, and it always writes a ledger row plus
+ * an audit event. `idempotencyKey` makes a retried submit safe.
+ */
+export async function adjustStock(
+  client: Client,
+  input: {
+    productId: string
+    delta: number
+    reasonCode: string
+    reasonNote: string
+    idempotencyKey: string
+  },
+): Promise<AdjustmentResult> {
+  const { data, error } = await client.rpc('adjust_stock', {
+    p_product_id: input.productId,
+    p_delta: input.delta,
+    p_reason_code: input.reasonCode,
+    p_reason_note: input.reasonNote,
+    p_idempotency_key: input.idempotencyKey,
+  })
+
+  if (error) fail(error)
+
+  const payload = (typeof data === 'string' ? JSON.parse(data) : (data ?? {})) as Record<string, unknown>
+  return {
+    productId: str(payload.product_id),
+    sku: str(payload.sku),
+    stockBefore: num(payload.stock_before),
+    stockAfter: num(payload.stock_after),
+    delta: num(payload.delta),
+    stockVersion: num(payload.stock_version),
+    movementId: num(payload.movement_id),
+    alreadyProcessed: payload.already_processed === true,
   }
 }

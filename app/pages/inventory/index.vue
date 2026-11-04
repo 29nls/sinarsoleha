@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useAuthStore } from '~/stores/auth'
 import { useSupabaseClient } from '~/composables/useSupabase'
 import { useStockBalances } from '~/composables/useInventory'
 import type { StockBalanceRow } from '~/types/inventory'
 import { STOCK_STATE_FILTER_LABELS } from '~/types/inventory'
+import { adjustStock } from '~/services/inventory'
 import { toCsv } from '~/types/reports'
 import { downloadCsv } from '~/utils/download'
 import { stockState, stockStateLabel } from '~/utils/catalog'
 import StockBalanceFilters from '~/components/inventory/StockBalanceFilters.vue'
 import StockBalanceTable from '~/components/inventory/StockBalanceTable.vue'
+import StockAdjustDialog from '~/components/inventory/StockAdjustDialog.vue'
 import InventoryTabs from '~/components/inventory/InventoryTabs.vue'
 
 definePageMeta({ capability: 'inventory.read' })
@@ -41,8 +43,52 @@ const {
   currentUserId: () => auth.profile?.id ?? '',
 })
 
+const canAdjust = computed(() => auth.allows('stock.adjust'))
+
+const adjustOpen = ref(false)
+const adjustRow = ref<StockBalanceRow | null>(null)
+const adjusting = ref(false)
+const adjustError = ref<string | null>(null)
+// One key per dialog session: a double submit or a retried request cannot post
+// the same correction twice.
+let adjustKey = crypto.randomUUID()
+
 function openHistory(row: StockBalanceRow): void {
   void navigateTo({ path: '/inventory/movements', query: { product: row.sku } })
+}
+
+function openAdjust(row: StockBalanceRow): void {
+  adjustRow.value = row
+  adjustKey = crypto.randomUUID()
+  adjustError.value = null
+  adjustOpen.value = true
+}
+
+async function submitAdjust(payload: {
+  delta: number
+  reasonCode: string
+  reasonNote: string
+}): Promise<void> {
+  const row = adjustRow.value
+  if (!row || adjusting.value) return
+
+  adjusting.value = true
+  adjustError.value = null
+  try {
+    await adjustStock(client, {
+      productId: row.id,
+      delta: payload.delta,
+      reasonCode: payload.reasonCode,
+      reasonNote: payload.reasonNote,
+      idempotencyKey: adjustKey,
+    })
+    adjustOpen.value = false
+    await refresh()
+  } catch (cause) {
+    adjustError.value = cause instanceof Error ? cause.message : 'Koreksi stok gagal disimpan.'
+  } finally {
+    adjusting.value = false
+  }
 }
 
 /**
@@ -74,8 +120,8 @@ const filterLabel = computed(() => STOCK_STATE_FILTER_LABELS[filters.state])
     <div>
       <h1 class="text-lg font-semibold tracking-tight">Inventaris</h1>
       <p class="text-[12px] text-[var(--color-muted)]">
-        Saldo stok per produk, histori pergerakan, dan selisih hasil opname. Data hanya dapat dibaca;
-        stok berubah lewat penjualan dan posting opname.
+        Saldo stok per produk, histori pergerakan, dan selisih hasil opname. Stok berubah lewat
+        penjualan, posting opname, dan koreksi manual beralasan yang tercatat di ledger.
       </p>
     </div>
 
@@ -109,7 +155,14 @@ const filterLabel = computed(() => STOCK_STATE_FILTER_LABELS[filters.state])
         </div>
       </div>
 
-      <StockBalanceTable :rows="rows" :loading="loading" :error="error" @open="openHistory" />
+      <StockBalanceTable
+        :rows="rows"
+        :loading="loading"
+        :error="error"
+        :can-adjust="canAdjust"
+        @open="openHistory"
+        @adjust="openAdjust"
+      />
 
       <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-line)] px-3 py-2">
         <p class="text-[11px] text-[var(--color-muted)]">
@@ -132,5 +185,14 @@ const filterLabel = computed(() => STOCK_STATE_FILTER_LABELS[filters.state])
       agar menjadi saldo awal. Filter “{{ filterLabel }}” dihitung di browser karena batas rendah
       disimpan per produk; angka pada kartu tetap jumlah baris yang cocok, bukan satu halaman.
     </p>
+
+    <StockAdjustDialog
+      :open="adjustOpen"
+      :row="adjustRow"
+      :saving="adjusting"
+      :error="adjustError"
+      @close="adjustOpen = false"
+      @submit="submitAdjust"
+    />
   </div>
 </template>

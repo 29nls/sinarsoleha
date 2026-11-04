@@ -617,7 +617,10 @@ isOneToOne: false
             [_ in never]: never
           }
           Functions: {
-            "admin_upsert_profile":
+            "adjust_stock":
+{ Args: { "p_delta": number,"p_idempotency_key"?: string,"p_product_id": string,"p_reason_code": string,"p_reason_note": string }; Returns: Json
+                           },
+"admin_upsert_profile":
 { Args: { "p_full_name": string,"p_is_active": boolean,"p_role": string,"p_user_id": string }; Returns: Json
                            },
 "approve_stock_opname":

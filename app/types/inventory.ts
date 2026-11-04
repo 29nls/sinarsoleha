@@ -198,6 +198,17 @@ const ERROR_MESSAGES: Array<[string, string]> = [
   ['STOCK_LEDGER_IMMUTABLE', 'Ledger stok tidak dapat diubah; buat movement koreksi baru.'],
   ['PRODUCT_NOT_FOUND', 'Produk tidak ditemukan.'],
   ['OPNAME_NOT_FOUND', 'Sesi opname tidak ditemukan.'],
+  ['STOCK_UNKNOWN', 'Saldo produk belum diketahui; catat lewat opname saldo awal.'],
+  ['STOCK_NEGATIVE', 'Koreksi ini membuat saldo menjadi negatif.'],
+  ['DELTA_ZERO', 'Jumlah koreksi tidak boleh nol.'],
+  ['DELTA_REQUIRED', 'Jumlah koreksi wajib diisi.'],
+  ['REASON_REQUIRED', 'Alasan koreksi wajib dipilih.'],
+  ['REASON_INVALID', 'Saldo awal hanya dapat dicatat lewat opname.'],
+  ['INVALID_REASON', 'Alasan koreksi tidak dikenal.'],
+  ['REASON_NOTE_REQUIRED', 'Catatan alasan wajib diisi.'],
+  ['REASON_NOTE_TOO_LONG', 'Catatan alasan maksimal 500 karakter.'],
+  ['INVALID_PRECISION', 'Jumlah melebihi presisi satuan produk.'],
+  ['IDEMPOTENCY_KEY_REUSED', 'Koreksi ini sudah pernah dikirim dengan isi berbeda.'],
 ]
 
 export function describeInventoryError(cause: unknown): string {
@@ -230,4 +241,79 @@ export function startOfJakartaDay(date: string): string {
 /** Inclusive end of day, so a same-day range still matches. */
 export function endOfJakartaDay(date: string): string {
   return `${date}T23:59:59.999+07:00`
+}
+
+// ---------------------------------------------------------------------------
+// Manual adjustment (Phase 11)
+// ---------------------------------------------------------------------------
+
+/** `opening_balance` is deliberately absent: NULL stock goes through opname. */
+export const ADJUSTMENT_REASONS = [
+  'broken_damaged',
+  'missing',
+  'input_error',
+  'unrecorded_out',
+  'unrecorded_in',
+  'unit_conversion',
+  'other',
+] as const
+
+export type AdjustmentReason = (typeof ADJUSTMENT_REASONS)[number]
+
+export interface AdjustmentInput {
+  stockOnHand: number | null
+  delta: string
+  reasonCode: string
+  reasonNote: string
+  decimalScale: number
+}
+
+export interface AdjustmentResult {
+  productId: string
+  sku: string
+  stockBefore: number
+  stockAfter: number
+  delta: number
+  stockVersion: number
+  movementId: number
+  alreadyProcessed: boolean
+}
+
+/**
+ * Mirrors `private.adjust_stock` so the dialog can fail fast. The delta is
+ * signed: a negative value removes stock, a positive one adds it.
+ */
+export function validateAdjustment(input: AdjustmentInput): string | null {
+  if (input.stockOnHand === null) {
+    return 'Saldo produk belum diketahui; catat lewat Stok Opname sebagai saldo awal.'
+  }
+
+  const raw = input.delta.trim().replace(',', '.')
+  if (raw === '') return 'Jumlah koreksi wajib diisi.'
+
+  const delta = Number(raw)
+  if (!Number.isFinite(delta)) return 'Jumlah koreksi harus berupa angka.'
+  if (delta === 0) return 'Jumlah koreksi tidak boleh nol.'
+
+  const scale = Number.isInteger(input.decimalScale) ? input.decimalScale : 0
+  const factor = 10 ** scale
+  if (Math.round(delta * factor) / factor !== delta) {
+    return scale === 0
+      ? 'Satuan produk ini tidak mendukung angka desimal.'
+      : `Satuan produk ini hanya mendukung ${scale} angka desimal.`
+  }
+
+  if (input.stockOnHand + delta < 0) {
+    return `Koreksi ini membuat saldo menjadi ${input.stockOnHand + delta}; saldo tidak boleh negatif.`
+  }
+
+  if (!(ADJUSTMENT_REASONS as readonly string[]).includes(input.reasonCode)) {
+    return 'Pilih alasan koreksi.'
+  }
+
+  const note = input.reasonNote.trim()
+  if (note === '') return 'Catatan alasan wajib diisi.'
+  if (note.length > 500) return 'Catatan alasan maksimal 500 karakter.'
+
+  return null
 }

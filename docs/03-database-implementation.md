@@ -1,7 +1,7 @@
 # Implementasi Database
 
-**Status: seluruh 16 migrasi (Phase 2–5A + Realtime) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; produksi belum diterapkan.**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: 16 migrasi (Phase 2–5A + Realtime) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; migrasi ke-17 (Phase 11 `adjust_stock`) ada di repo tetapi belum di-push. Produksi belum menerima migrasi apa pun.**
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. Phase 11 menambah migrasi ke-17 yang sudah diuji lokal tetapi **belum di-push**. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -24,6 +24,7 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261103110000_transaction_engine.sql` | `complete_sale`, `void_sale`, idempotensi, penguncian produk |
 | `20261104100000_stock_opname_engine.sql` | Phase 5A: 6 RPC opname, `creation_key`, constraint delta nol untuk opening balance, constraint cancel sesi counting |
 | `20261105100000_stock_broadcast.sql` | Phase 10: trigger `products_broadcast_stock`, `private.broadcast_product_stock()`, policy baca topik privat `store:stock` di `realtime.messages` |
+| `20261106100000_stock_adjustment.sql` | Phase 11: `private.adjust_stock` + wrapper `public.adjust_stock` (koreksi manual, alasan & catatan wajib, presisi satuan, idempotensi, audit `stock.adjust`) — **belum di-push** |
 
 ### Bukti schema hosted
 
@@ -153,7 +154,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A dan tervalidasi hosted (10/10); `post_stock_opname` selesai Phase 5A dan sudah diterapkan ke preview; `adjust_stock` masih kontrak |
+| DB-03 | Selesai | `complete_sale`/`void_sale` Phase 4A dan `post_stock_opname` Phase 5A tervalidasi hosted; `adjust_stock` selesai Phase 11 (grup J1–J5, 88/88 tes DB) dan menunggu push preview |
 | DB-04 | Selesai | trigger `updated_at` |
 | DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |
@@ -171,7 +172,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 
 ## 6. Apply ke Hosted
 
-Preview **sudah sinkron 16/16 migrasi**; **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
+Preview **sudah sinkron 16/16 migrasi** (migrasi ke-17 Phase 11 belum di-push); **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
 
 ```bash
 npx supabase link --project-ref <production-ref>

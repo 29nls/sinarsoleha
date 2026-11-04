@@ -7,9 +7,13 @@ defineProps<{
   rows: StockBalanceRow[]
   loading: boolean
   error: string | null
+  canAdjust: boolean
 }>()
 
-const emit = defineEmits<{ open: [row: StockBalanceRow] }>()
+const emit = defineEmits<{
+  open: [row: StockBalanceRow]
+  adjust: [row: StockBalanceRow]
+}>()
 
 function stateOf(row: StockBalanceRow) {
   return stockState(row.stockOnHand, row.lowStockThreshold)
@@ -81,6 +85,14 @@ function tagClass(row: StockBalanceRow): string {
                 @click="emit('open', row)"
               >
                 Histori
+              </button>
+              <button
+                v-if="canAdjust"
+                class="btn ml-1 px-1.5 py-0.5 text-[11px]"
+                type="button"
+                @click="emit('adjust', row)"
+              >
+                Koreksi
               </button>
             </td>
           </tr>

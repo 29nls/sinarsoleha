@@ -28,9 +28,9 @@
 Tidak ada trigger pada `auth.users` dan tidak ada policy INSERT `profiles`. Setiap user baru gagal di `private.has_role`, sehingga semua policy menolak.
 *Perbaikan:* trigger `auth.users` → insert `profiles` dengan role default `cashier` dan `is_active=false` (wajib diaktifkan owner), atau fungsi admin `private.provision_user`. Jangan izinkan sign-up publik.
 
-**DB-03. Belum ada RPC mutasi.**
-`complete_sale`, `void_sale`, `post_stock_opname`, `adjust_stock`, dan `provision_profile` belum ada.
-*Perbaikan:* implementasikan di Phase 2/4/5 dengan lock, validasi, dan audit. Tanpa RPC, modul kasir dan opname tidak boleh dimulai.
+**DB-03. Belum ada RPC mutasi.** (sebagian selesai)
+Saat audit, `complete_sale`, `void_sale`, `post_stock_opname`, `adjust_stock`, dan `provision_profile` belum ada.
+*Perbaikan:* `complete_sale`/`void_sale` selesai Phase 4A, `post_stock_opname` selesai Phase 5A, dan `adjust_stock` selesai Phase 11 — semuanya dengan lock, validasi, ledger, dan audit. Status rinci ada di `docs/03-database-implementation.md` §5.
 
 ### P1 — harus diperbaiki sebelum migrasi di-freeze
 

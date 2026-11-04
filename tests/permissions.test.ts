@@ -31,6 +31,12 @@ describe('role capability matrix', () => {
     expect(can(undefined, 'catalog.read')).toBe(false)
   })
 
+  it('lets owner and warehouse correct stock but not a cashier', () => {
+    expect(can('owner', 'stock.adjust')).toBe(true)
+    expect(can('inventory_staff', 'stock.adjust')).toBe(true)
+    expect(can('cashier', 'stock.adjust')).toBe(false)
+  })
+
   it('gates the opname approval capability to the owner', () => {
     expect(can('owner', 'opname.approve')).toBe(true)
     expect(can('inventory_staff', 'opname.approve')).toBe(false)

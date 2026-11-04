@@ -18,6 +18,7 @@ export const CAPABILITIES = [
   'opname.create',
   'opname.count',
   'opname.approve',
+  'stock.adjust',
   'report.sales',
   'report.stock',
   'settings.manage',
@@ -41,6 +42,7 @@ const INVENTORY_CAPABILITIES: readonly Capability[] = [
   'inventory.read',
   'opname.create',
   'opname.count',
+  'stock.adjust',
   'report.stock',
 ]
 

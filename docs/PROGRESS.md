@@ -1007,3 +1007,64 @@ nonaktif, tidak terlihat di kasir).
 `disable_signup` di hosted, pembersihan akun/data uji preview, CSP/HSTS di
 lapisan hosting, rate limit login, backup/restore teruji, dan `db push` ke
 project produksi terpisah — semuanya masih terbuka.
+
+## 6 November 2026 — Phase 11 (Koreksi stok manual, DB-03)
+
+Melengkapi RPC mutasi terakhir yang masih kontrak. Koreksi manual kini punya
+jalur resmi: satu movement `manual_adjustment` beralasan, audit, dan idempotensi
+— tanpa pernah mengizinkan klien menulis `products.stock_on_hand`.
+
+### Yang dibuat
+
+- `supabase/migrations/20261106100000_stock_adjustment.sql` —
+  `private.adjust_stock(uuid, numeric, text, text, uuid)` + wrapper
+  `public.adjust_stock(...)` (`security definer`, `search_path = ''`,
+  `EXECUTE` hanya untuk `authenticated`).
+- `app/components/inventory/StockAdjustDialog.vue` — dialog arah tambah/kurangi,
+  pratinjau saldo, validasi presisi, alasan, catatan wajib.
+- `tests/stock-adjust.test.ts` (5 tes validasi).
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `app/types/inventory.ts` | `ADJUSTMENT_REASONS`, `validateAdjustment`, `AdjustmentResult`, pesan error baru. |
+| `app/services/inventory.ts` | `adjustStock(client, input)` memanggil RPC dengan kunci idempotensi. |
+| `app/components/inventory/StockBalanceTable.vue` | Prop `canAdjust` + tombol “Koreksi”. |
+| `app/pages/inventory/index.vue` | State dialog, kunci idempotensi per sesi, refresh setelah sukses. |
+| `app/utils/permissions.ts` | Capability `stock.adjust` untuk owner dan inventory_staff. |
+| `scripts/db-test.mjs` | Grup J1–J5; assertion I4 naik ke ≥18 fungsi publik. |
+| `types/database.generated.ts` | Hasil `npm run gen:types` (fungsi `adjust_stock`). |
+| `tests/permissions.test.ts` | Matriks `stock.adjust`. |
+| `docs/02`, `docs/03`, `docs/04`, `docs/11`, `docs/13` | Status DB-03, kontrak RPC, batasan UI. |
+
+### Keputusan
+
+- **`opening_balance` ditolak.** Alasan itu berarti saldo belum diketahui;
+  jalurnya opname saldo awal, bukan koreksi. Ini menutup pertanyaan terbuka di
+  kontrak lama.
+- **Saldo negatif ditolak untuk semua peran.** Kontrak lama membuka pengecualian
+  owner + `input_error`; itu tidak dipakai karena saldo negatif merusak laporan
+  dan sudah bisa diperbaiki lewat koreksi positif setelah opname.
+- **Catatan wajib untuk semua alasan.** Constraint ledger sudah mewajibkannya
+  untuk `manual_adjustment`; memvalidasi di RPC memberi pesan yang jelas.
+- **Idempotensi opsional.** `p_idempotency_key` default `NULL` supaya pemanggil
+  lama tetap sah; UI selalu mengirim UUID baru per dialog.
+- **Tanpa edit langsung.** Tidak ada grant UPDATE pada `products`; satu-satunya
+  penulis saldo tetap RPC dan trigger penjualan/opname.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **88/88 lulus** (5 tes baru J1–J5) |
+| `npm test` | **257/257 lulus** (20 file; 6 tes baru) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (1,92 MB / 474 kB gzip) |
+| `npm run audit:bundle` | 0 temuan |
+
+### Belum diterapkan ke preview
+
+Migrasi ini **belum** di-push. Prasyaratnya sama seperti fase sebelumnya:
+`supabase migration list`, `db push --dry-run`, lalu approval eksplisit. Setelah
+push, jalankan `gen types --linked` dan uji satu koreksi nyata di hosted.

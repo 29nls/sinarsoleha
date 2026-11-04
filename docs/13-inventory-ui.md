@@ -91,8 +91,12 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 
 ## Batasan
 
-- Ledger bersifat immutable (trigger menolak UPDATE/DELETE). Halaman ini murni
-  baca; koreksi dilakukan dengan movement baru lewat opname, bukan edit.
+- Ledger bersifat immutable (trigger menolak UPDATE/DELETE). Tabel saldo tetap
+  tidak bisa diedit langsung; koreksi dilakukan sebagai movement baru lewat
+  opname atau dialog **Koreksi stok** (Phase 11). Dialog itu hanya muncul untuk
+  peran dengan capability `stock.adjust` (owner, inventory_staff), meminta arah
+  (tambah/kurangi), jumlah, alasan, dan catatan wajib, lalu memanggil
+  `public.adjust_stock`. Produk berstok NULL diarahkan ke opname.
 - Ekspor CSV hanya mencakup satu halaman, bukan seluruh hasil filter; belum
   ada ekspor Excel dan belum ada grafik tren.
 - Filter stok rendah memindai maksimal 5.000 produk. Katalog saat ini 1.360,
