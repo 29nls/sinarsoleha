@@ -1481,3 +1481,16 @@ dengan `42501` tanpa satu baris pun berubah.
 
 Belum ada sesi opname nyata yang dibuat, belum ada posting, dan produksi tidak
 disentuh. Satu-satunya blocker tersisa adalah frasa gate Phase 5F.
+
+## 4 November 2026 — Roadmap go-live (`docs/23`)
+
+Sisa pekerjaan dipetakan menjadi 9 langkah dalam 4 tahap. Temuan yang
+mendasarinya: **0 dari 1.361 produk aktif punya saldo** — semuanya `NULL`,
+sehingga kasir belum bisa menjual apa pun. Saldo hanya boleh berasal dari
+hitungan fisik, jadi Tahap B (3–5 hari kerja gudang) adalah bottleneck
+sebenarnya, bukan kode. Hanya ada satu project Supabase (preview), sehingga
+produksi masih harus dibuat, di-`db push`, diimpor, dan diisi saldo awal.
+
+Hardening Tahap C bisa berjalan paralel dengan Tahap B. Satu butirnya mencatat
+bahwa CSP/HSTS belum bisa dikerjakan karena repo belum punya konfigurasi
+platform hosting.

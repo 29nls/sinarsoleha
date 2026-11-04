@@ -124,4 +124,7 @@ types/          tipe database hasil generate
 - `docs/18-realtime-stock.md` — Broadcast stok private, version guard, reconnect, tes grup H (Phase 10)
 - `docs/19-inventory-hosted-validation.md` — validasi hosted & E2E inventaris Phase 5D
 - `docs/20-preview-fixture-inventory.md` — inventaris read-only 48 produk uji, klasifikasi A–D, rencana pengarsipan Phase 5E
+- `docs/21-phase-5e-hosted-readiness.md` — kesiapan hosted Phase 5E.1
+- `docs/22-phase-5f-stock-opname-runbook.md` — runbook stok opname fisik nyata (Phase 5F)
+- `docs/23-go-live-roadmap.md` — sisa 9 langkah menuju siap pakai, pemilik dan kriteria lulus
 - `docs/PROGRESS.md` — log pengembangan (termasuk Phase 11 `adjust_stock`)

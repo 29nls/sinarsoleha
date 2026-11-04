@@ -3,9 +3,9 @@
 Status per 4 November 2026: **BELUM DIMULAI.** Runbook ini disiapkan agar
 Phase 5F bisa dijalankan tanpa keputusan yang belum diambil saat hari-H.
 
-Prasyarat yang masih terbuka: akun `INVENTORY_STAFF_B` belum ada. Dari lima
-profil di preview, hanya satu yang berperan `inventory_staff`. Phase 5F tidak
-boleh dimulai sebelum akun itu dibuat, login sekali, dan diverifikasi.
+Prasyarat akun sudah terpenuhi: `INVENTORY_STAFF_B`
+(`phase5f.staffb@sinarsoleha.com`) ada dan terverifikasi 8/8. Satu-satunya
+blocker tersisa adalah frasa gate dari owner.
 
 ## 1. Definisi selesai
 
