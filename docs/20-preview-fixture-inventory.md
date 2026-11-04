@@ -63,6 +63,10 @@ audit tetap dilaporkan di kolom tersendiri agar tidak hilang dari pandangan.
 satu pun penghapusan fisik, dan tidak ada `DELETE` yang menunggu approval.
 Pembersihan yang diusulkan seluruhnya berbentuk pengarsipan (nonaktifkan).
 
+Audit ulang Phase 5E.1 pada 4 November 2026 09:48 UTC mengembalikan angka yang
+sama, 8 UUID aktif yang sama, dan tidak ada fixture baru. Rencana eksekusi
+memakai RPC owner, bukan `UPDATE` langsung — lihat §7.
+
 ## 4. Kelompok fixture
 
 | Grup | Jumlah | Aktif | Klas. | Movement | Tx item | Opname item | Log | Audit | Cost |
@@ -173,17 +177,35 @@ nol.
 | 47 | C | `TEST-TXN-PAY-001` | TEST Payment Produk | ya | 1 | 11 | 18 | 22 | 1 | 0 | 0 | 0 | 0 | `a1000000-0000-4000-8000-000000000003` |
 | 48 | C | `TEST-TXN-RACE-001` | TEST Race Produk | ya | 0 | 7 | 3 | 12 | 1 | 0 | 6 | 0 | 0 | `a1000000-0000-4000-8000-000000000001` |
 
-## 7. Rencana pembersihan (dry-run, belum dieksekusi)
+## 7. Rencana pengarsipan (dry-run, belum dieksekusi)
 
-Tidak ada penghapusan. Rencana hanya menonaktifkan produk yang masih aktif dan
-membiarkan seluruh riwayat apa adanya.
+Audit ulang Phase 5E.1 pada 4 November 2026 09:48 UTC mengembalikan 48 produk
+yang sama, 8 aktif, dan klasifikasi yang sama (A=0, B=13, C=3, D=32). Tidak ada
+penghapusan. Rencana hanya menonaktifkan 8 produk aktif dan membiarkan seluruh
+riwayat apa adanya.
 
-### 7.1 Nonaktifkan 8 produk aktif
+### 7.1 Metode: RPC owner, bukan UPDATE langsung
+
+`public.upsert_product` adalah jalur tulis produk yang owner-only. RPC itu
+meng-update kolom master + `is_active` dan **tidak** menyentuh
+`stock_on_hand`/`stock_version`. Payload memakai nilai master saat ini, jadi
+satu-satunya perubahan adalah `is_active=false`; RPC juga menulis audit
+`product.update`.
+
+Delapan payload lengkap ada di
+`docs/21-phase-5e-hosted-readiness.md` §7. Bentuk pemanggilannya:
+
+```js
+await client.rpc('upsert_product', {
+  p_payload: { ...masterFields, product_id: id, is_active: false },
+})
+```
+
+Verifikasi read-only sebelum eksekusi (bukan bagian dari eksekusi):
 
 ```sql
--- DRY RUN — belum dijalankan. Tidak ada DELETE, tidak ada CASCADE.
-update public.products
-   set is_active = false
+select id, sku, is_active, stock_on_hand, stock_version
+  from public.products
  where id in (
    '164b53c4-3ed5-4aa4-8c3c-8c499a5b9a4a', -- HOST-MVYL2SIG
    'fb51c404-94bc-41c5-b493-1fcf671dc510', -- HOST-MVYLDP3O
@@ -201,11 +223,13 @@ Dampak yang diperkirakan:
 | Objek | Sebelum | Sesudah | Catatan |
 | --- | --- | --- | --- |
 | Produk aktif | 8 | 0 | Katalog operasional bersih dari fixture |
+| `stock_on_hand` / `stock_version` | 8 nilai | **tidak berubah** | RPC tidak menulis kolom stok |
 | `stock_movements` | 104 | 104 | Tidak disentuh |
 | `transaction_items` | 39 | 39 | Tidak disentuh |
+| `payments` | 39 | 39 | Tidak disentuh |
 | `stock_opname_items` | 80 | 80 | Tidak disentuh |
 | `stock_discrepancy_logs` | 13 | 13 | Tidak disentuh |
-| `audit_logs` | 92 | 92 + 8 | `product.update` baru dari perubahan `is_active` |
+| `audit_logs` | 92 | 92 + 8 | `product.update` baru dari RPC |
 | `product_costs` | 5 | 5 | Tidak disentuh |
 | Stok `NULL` produk impor | 1.361 | 1.361 | Tidak disentuh |
 
@@ -214,7 +238,18 @@ lama. Riwayat transaksi tetap dapat dibuka di `/cashier/transactions`, dan
 laporan tetap menghitungnya. Yang berubah hanya visibilitas produk di katalog
 dan pencarian kasir.
 
-### 7.2 Yang tidak akan dilakukan
+### 7.2 Gate approval (terpisah)
+
+Eksekusi hanya boleh berjalan setelah owner menulis tepat:
+
+```
+APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
+```
+
+Gate ini **bukan** bagian dari `APPROVE PHASE 5E MIGRATIONS TO PREVIEW`.
+Menyetujui migrasi tidak menyetujui pengarsipan, dan sebaliknya.
+
+### 7.3 Yang tidak akan dilakukan
 
 - Tidak menghapus produk, movement, baris opname, log selisih, transaksi,
   pembayaran, atau audit — meskipun produknya nonaktif.
@@ -223,12 +258,12 @@ dan pencarian kasir.
 - Tidak mengubah `stock_on_hand` / `stock_version` produk mana pun.
 - Tidak menghapus sesi opname `posted`; sesi itu bukti historis.
 
-### 7.3 Kalau kelak ada kandidat A
+### 7.4 Kalau kelak ada kandidat A
 
 Klasifikasi A saat ini nol. Bila nanti muncul, urutannya wajib: buktikan nol
 referensi FK → jalankan `node scripts/fixture-audit.mjs --json` ulang →
-sajikan dry-run → tunggu `APPROVE PREVIEW FIXTURE CLEANUP` → baru eksekusi.
-Approval tidak pernah disimpulkan dari diskusi.
+sajikan dry-run → tunggu approval terpisah → baru eksekusi. Approval tidak
+pernah disimpulkan dari diskusi.
 
 ## 8. Cara mengulang audit
 

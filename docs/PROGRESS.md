@@ -1364,3 +1364,54 @@ diterapkan ke mana pun.
 Phase 5E selesai untuk lingkup lokal. Tiga migrasi menunggu penerapan preview,
 cleanup fixture menunggu approval eksplisit, dan akun staf kedua menunggu
 pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.
+
+## 4 November 2026 — Phase 5E.1 (kesiapan hosted, menunggu approval)
+
+### Lingkup
+
+- Audit read-only dan dry-run deployment untuk tiga migrasi 5E.
+- Tidak ada migrasi diterapkan, tidak ada fixture diarsipkan, tidak ada stok
+  atau saldo awal yang dibuat.
+- Dua gate approval terpisah: migrasi dan pengarsipan.
+
+### Bukti remote dan dry-run
+
+| Item | Hasil |
+| --- | --- |
+| Project | `ptbllrugrjepdhhdkzxn` (preview; org `veqlhnjvckdsflpoefsu`) |
+| CLI | `npx supabase` 2.122.0 |
+| Riwayat remote | 20/20 sampai `20261106130000` |
+| Riwayat lokal | 23 |
+| `db push --dry-run` | tepat `20261106140000`, `20261106140100`, `20261106140200` |
+| Probe RPC 5E | ketiganya `PGRST202` (belum ada) |
+| `npm run gen:types` | keluaran identik dengan tipe yang di-commit |
+
+### Bukti read-only preview
+
+- Katalog 1.409 produk; 1.374 `NULL`; 1.369 aktif.
+- 1.361 produk impor tetap `NULL` (1.374 `NULL` − 13 fixture `NULL`).
+- 5 profil: owner 1, inventory_staff 1, cashier 3 (1 nonaktif). Staf B belum ada.
+- 48 fixture: **A=0, B=13, C=3, D=32**; 8 aktif (5 `HOST-*`, 3 `TEST-TXN-*`).
+- 58 sesi opname; `OP-20261104-0018` dan `OP-20261104-0032` berstatus
+  `cancelled` dengan 1.361 item — dipakai untuk uji paginasi read-only.
+- 2 item `needs_recount` (`OP-20261104-0047`, `OP-20261104-0052`) untuk uji konteks.
+
+### Verifikasi lokal
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **101/101** |
+| `npm test` | **275/275** (20 berkas) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (22,5 detik pada run 5E.1) |
+| `npm run audit:bundle` | 0 temuan (151 berkas, 2.581,2 kB) |
+
+### Gate
+
+```
+APPROVE PHASE 5E MIGRATIONS TO PREVIEW
+APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
+```
+
+Tidak ada gate yang boleh disimpulkan dari gate lainnya. Detail lengkap ada di
+`docs/21-phase-5e-hosted-readiness.md`.

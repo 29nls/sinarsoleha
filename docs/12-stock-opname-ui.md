@@ -10,7 +10,7 @@ perubahan stok tetap terjadi di database; UI hanya memanggil RPC.
 - Composable: `app/composables/useOpnameList.ts`, `app/composables/useOpnameDetail.ts`
 - Komponen: `app/components/opname/*.vue`
 - Tes: `tests/opname.test.ts`, `tests/opname-service.test.ts`, `tests/opname-queries.test.ts`
-- Status: **selesai & diuji; migrasi 5A + perbaikan recount 0020 sudah di preview; E2E browser 17/17 lulus (Phase 5D). Phase 5E menambahkan paginasi item, ringkasan agregat, dan konteks recount — tiga migrasi 0021–0023 belum diterapkan ke preview**
+- Status: **selesai & diuji; migrasi 5A + perbaikan recount 0020 sudah di preview; E2E browser 17/17 lulus (Phase 5D). Phase 5E menambahkan paginasi item, ringkasan agregat, dan konteks recount — tiga migrasi 0021–0023 sudah lulus dry-run Phase 5E.1 dan menunggu approval deployment; lihat `docs/21-phase-5e-hosted-readiness.md`**
 
 ## 1. Alur pengguna
 
