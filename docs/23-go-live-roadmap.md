@@ -63,17 +63,23 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | # | Langkah | Pemilik | Kriteria lulus |
 | --- | --- | --- | --- |
 | C1 | Nyalakan `disable_signup` di hosted | Teknis | `GET /auth/v1/settings` → `disable_signup: true` |
+| C1a | Pastikan provider login email tetap hidup | Teknis | `external.email: true` dan owner bisa login |
 | C2 | Bersihkan akun & data uji preview | Teknis | tidak ada akun `phase*`, 0 fixture `TEST-*`/`HOST-*` aktif |
 | C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi |
 | C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi |
 | C5 | Uji backup & restore | Teknis | restore ke project uji menghasilkan 23/23 migrasi + data utuh |
 
-C1 mendesak dan murah: `disable_signup` saat ini **`false`**, artinya pendaftaran
-publik terbuka. Aplikasi tidak butuh itu — akun dibuat owner lewat `/users`.
+C1 **selesai** di preview: `disable_signup: true`, dan probe `POST
+/auth/v1/signup` mengembalikan `422 signup_disabled`. Aplikasi tidak butuh
+pendaftaran publik — akun dibuat owner lewat `/users`.
 
-C3 belum bisa dieksekusi sekarang karena **belum ada konfigurasi hosting** di
-repo (tidak ada `vercel.json`, `netlify.toml`, atau `wrangler.toml`). Keputusan
-platform hosting harus diambil lebih dulu.
+C1a ditambahkan sebagai langkah tersendiri setelah insiden 4 November: mematikan
+`[auth.email] enable_signup` bukan menutup pendaftaran, melainkan mematikan
+**provider login email** sampai owner tidak bisa masuk. Lihat `docs/PROGRESS.md`.
+
+C3 kini bisa dikerjakan: platform hosting sudah teridentifikasi **Vercel** dari
+`site_url` remote (`sinarsoleha-macengbot-4224s-projects.vercel.app`), meski
+repo belum punya `vercel.json`. Header keamanan bisa dipasang lewat file itu.
 
 ## 5. Tahap D — Produksi (1–2 hari)
 

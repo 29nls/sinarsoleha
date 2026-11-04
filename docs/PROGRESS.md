@@ -1494,3 +1494,39 @@ produksi masih harus dibuat, di-`db push`, diimpor, dan diisi saldo awal.
 Hardening Tahap C bisa berjalan paralel dengan Tahap B. Satu butirnya mencatat
 bahwa CSP/HSTS belum bisa dikerjakan karena repo belum punya konfigurasi
 platform hosting.
+
+## 4 November 2026 — Signup publik ditutup, plus insiden yang ditemukan
+
+`disable_signup` dinyalakan di preview lewat `supabase config push` dengan
+config minimal (`.tmp/cfgpush`) yang hanya mendeklarasikan properti auth.
+Pendekatan ini dipilih setelah `config diff` pada `supabase/config.toml` asli
+menunjukkan bahwa push penuh akan ikut menulis ulang `site_url` dan
+`additional_redirect_urls` menjadi `127.0.0.1` — itu akan mematikan aplikasi
+Vercel yang sedang dipakai.
+
+Hasil akhir, diverifikasi lewat `/auth/v1/settings`:
+
+| Setelan | Nilai | Arti |
+| --- | --- | --- |
+| `disable_signup` | `true` | pendaftaran publik tertutup |
+| `external.email` | `true` | login email tetap hidup |
+| `mailer_autoconfirm` | `true` | tidak ada email konfirmasi (aman, karena signup tutup) |
+
+Probe `POST /auth/v1/signup` mengembalikan `422 signup_disabled`, jadi
+penutupan ini nyata, bukan sekadar setelan yang tersimpan.
+
+**Insiden.** Percobaan pertama memakai `[auth.email] enable_signup = false`.
+Properti itu ternyata bukan "pendaftaran lewat email", melainkan **ketersediaan
+provider Email**. Akibatnya seluruh login email mati — owner sendiri gagal
+masuk dengan `Email logins are disabled`, dan `test:hosted:opname:staff-b`
+gagal total. Ini terdeteksi langsung oleh skrip readiness, lalu diperbaiki
+dengan mengembalikan `[auth.email] enable_signup = true` sementara penutupan
+pendaftaran tetap dipegang `[auth] enable_signup = false`.
+
+Pelajaran: `[auth] enable_signup` menutup pendaftaran; `[auth.email]
+enable_signup` menyalakan/mematikan provider login. Keduanya berbeda dan
+yang kedua mudah disalahartikan.
+
+Setelah perbaikan: `test:hosted:opname:staff-b` 8/8 dan
+`test:hosted:opname` 11/11, keduanya exit 0. Diff config tersisa 0 update.
+`site_url` dan empat URL redirect Vercel tetap utuh.
