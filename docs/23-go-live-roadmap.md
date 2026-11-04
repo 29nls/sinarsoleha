@@ -66,12 +66,44 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | C1a | Pastikan provider login email tetap hidup | Teknis | `external.email: true` dan owner bisa login |
 | C2 | Bersihkan akun & data uji preview | Teknis | tidak ada akun `phase*`, 0 fixture `TEST-*`/`HOST-*` aktif |
 | C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi ✅ |
-| C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi |
+| C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi ✅ |
 | C5 | Uji backup & restore | Teknis | restore ke project uji menghasilkan 23/23 migrasi + data utuh |
 
 C1 **selesai** di preview: `disable_signup: true`, dan probe `POST
 /auth/v1/signup` mengembalikan `422 signup_disabled`. Aplikasi tidak butuh
 pendaftaran publik — akun dibuat owner lewat `/users`.
+
+C4 **selesai** tanpa perlu mengubah setelan apa pun. Rate limit login Supabase
+Auth sudah aktif sebagai default dan **tidak bisa dibaca lewat CLI**:
+`supabase config pull` menarik 10 properti remote dan `[auth.rate_limit]` tidak
+ada di dalamnya. Nilainya hanya terbaca lewat Management API
+(`GET /v1/projects/{ref}/config/auth`), yang butuh personal access token — tidak
+tersedia di mesin ini dan sengaja tidak dikejar.
+
+Karena itu pembuktian dilakukan dari perilaku, bukan dari setelan:
+
+| Uji | Hasil |
+| --- | --- |
+| 60 login gagal beruntun ke akun tidak ada | `400` ×30, lalu **`429`** pada percobaan ke-31 |
+| Login staf B yang sah saat bucket habis | **`200`, token terbit** |
+| Login sah 20 detik kemudian | `200`, pulih tanpa intervensi |
+
+Angka 31 cocok dengan dokumentasi: bucket kapasitas 30, terisi ulang 30 per 5
+menit. Yang penting secara operasional: **pengguna sah tidak ikut terkunci** —
+bucket habis hanya menolak percobaan berikutnya, bukan memblokir kredensial yang
+benar. Di toko dengan satu komputer kasir, ini yang menentukan apakah toko bisa
+buka atau tidak.
+
+`app/stores/auth.ts` sudah menerjemahkan `429` menjadi "Terlalu banyak percobaan
+masuk" dan **tidak** menyalahkan kata sandi. `tests/auth-errors.test.ts` (6
+pemeriksaan) mengunci perilaku itu; tes dibuktikan bisa gagal dengan mematikan
+cabang rate limit (2 tes jatuh), lalu hijau lagi setelah dikembalikan.
+
+Catatan untuk produksi: batas ini per **IP**, bukan per akun. Kalau toko memakai
+satu IP publik bersama, tebakan password tersebar ke seluruh staf hanya
+menghasilkan ~30 percobaan per 5 menit — masih jauh di atas laju yang dibutuhkan
+untuk menebak password 8+ karakter. Batas ini pelengkap, bukan pengganti
+kebijakan password.
 
 C1a ditambahkan sebagai langkah tersendiri setelah insiden 4 November: mematikan
 `[auth.email] enable_signup` bukan menutup pendaftaran, melainkan mematikan

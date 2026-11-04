@@ -1572,3 +1572,30 @@ dikembalikan.
 
 Regresi: vitest 282/282, `test:hosted:opname` 11/11,
 `test:hosted:opname:staff-b` 8/8.
+
+## C4 — Rate limit login: aktif, tanpa setelan yang bisa diubah
+
+Ternyata tidak ada yang perlu dinyalakan. Rate limit login Supabase Auth sudah
+aktif sebagai default, dan setelannya **tidak terbaca lewat CLI**:
+`supabase config pull` menarik 10 properti remote, `[auth.rate_limit]` tidak
+ada di dalamnya. Nilai sebenarnya hanya tersedia lewat Management API
+`GET /v1/projects/{ref}/config/auth`, yang butuh personal access token — token
+itu tidak ada di mesin ini (CLI memakai keyring Windows) dan sengaja tidak
+dikejar demi satu angka yang bisa dibuktikan dari perilaku.
+
+Pembuktian dari perilaku, bukan dari setelan:
+
+- 60 login gagal beruntun ke alamat yang tidak ada: `400` ×30, lalu **`429`**
+  pada percobaan ke-31. Cocok dengan bucket kapasitas 30 yang terisi ulang 30
+  per 5 menit.
+- Login staf B yang sah **tetap `200`** walau bucket baru saja habis, dan pulih
+  dalam hitungan detik. Ini yang penting: batas ini menolak percobaan
+  berikutnya, bukan mengunci kredensial yang benar.
+
+`describeSignInError` di `app/stores/auth.ts` diekspor agar bisa diuji, dan
+`tests/auth-errors.test.ts` (6 pemeriksaan) mengunci terjemahan pesan: `429`
+tidak boleh muncul sebagai "kata sandi salah", karena itu membuat kasir
+mengulang lebih keras justru saat ia harus berhenti. Tes diuji balik dengan
+mematikan cabang rate limit — 2 tes jatuh, lalu hijau setelah dikembalikan.
+
+Regresi: vitest 288/288 (22 file), typecheck bersih.

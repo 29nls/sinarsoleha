@@ -20,7 +20,7 @@ function describeError(error: unknown): string {
   return 'Terjadi kesalahan yang tidak dikenali.'
 }
 
-function describeSignInError(message: string): string {
+export function describeSignInError(message: string): string {
   const normalized = message.toLowerCase()
   if (normalized.includes('invalid login credentials')) return 'Email atau kata sandi salah.'
   if (normalized.includes('email not confirmed')) return 'Email belum dikonfirmasi.'
