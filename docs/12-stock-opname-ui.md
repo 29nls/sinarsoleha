@@ -151,7 +151,8 @@ sehingga filter `pending` menampilkan jumlah global, bukan jumlah di halaman.
 
 Checklist ini disiapkan agar opname fisik pertama bisa dijalankan tanpa
 menyentuh data uji. Langkah migrasi dan cleanup fixture sudah dijalankan;
-langkah operasional lainnya **belum**.
+langkah operasional lainnya **belum**. Urutan eksekusi lengkap, gate, dan
+kriteria lulus ada di `docs/22-phase-5f-stock-opname-runbook.md`.
 
 ### Sebelum hari-H
 

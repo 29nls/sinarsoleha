@@ -1453,3 +1453,14 @@ Tidak ada gate yang boleh disimpulkan dari gate lainnya. Detail lengkap ada di
 
 Phase 5F belum dimulai. Blocker yang tersisa adalah akun `INVENTORY_STAFF_B`
 yang harus dibuat dan diverifikasi owner.
+
+## 4 November 2026 — Runbook Phase 5F
+
+Runbook eksekusi stok opname fisik nyata ditulis di
+`docs/22-phase-5f-stock-opname-runbook.md`. Isinya: definisi selesai, gate
+`APPROVE PHASE 5F REAL STOCK OPNAME ON PREVIEW`, langkah persiapan read-only,
+urutan buat sesi → hitung → buktikan konflik versi → submit → setujui → posting,
+verifikasi pasca-posting, rollback, dan daftar bukti yang harus disimpan.
+
+Belum ada sesi opname nyata yang dibuat, belum ada posting, dan produksi tidak
+disentuh. Pekerjaan tetap menunggu staf B.

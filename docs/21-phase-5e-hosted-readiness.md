@@ -258,3 +258,5 @@ Kesiapan dua orang **belum** boleh diklaim sampai akun itu ada dan terverifikasi
 2. Arsip fixture sudah selesai; jangan mengaktifkan kembali tanpa keputusan owner.
 3. Owner membuat `INVENTORY_STAFF_B` dan memverifikasi aksesnya.
 4. Setelah staf B ada dan terverifikasi, Phase 5F — stok opname fisik nyata.
+   Runbook eksekusi, gate, dan kriteria lulus ada di
+   `docs/22-phase-5f-stock-opname-runbook.md`.
