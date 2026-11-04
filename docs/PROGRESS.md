@@ -1135,5 +1135,19 @@ bukan sesi, saat trigger menyala.
 | Panggilan langsung helper trigger | `42501` (sebelumnya `0A000`) |
 
 I7 sekarang mengunci dua hal: panggilan langsung ditolak, dan nol fungsi
-`private` memberi EXECUTE ke `PUBLIC`. Migrasi ini **belum di-push** — masih
-menunggu persetujuan, dan produksi tetap belum menerima migrasi apa pun.
+`private` memberi EXECUTE ke `PUBLIC`.
+
+**Diterapkan ke preview** 4 November 2026 (`db push --linked`, dry-run lebih
+dulu memperlihatkan hanya migrasi ini). Verifikasi pasca-push:
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `migration list --linked` | **18/18** sinkron |
+| Probe peran (anon/owner/cashier/gudang/nonaktif) | **10/10** lulus |
+| `has_role` masih dipanggil RLS | ya — owner membaca lintas staf + `audit_logs` |
+| RLS tetap membatasi | cashier/gudang hanya melihat profil sendiri, `audit_logs` kosong |
+| `gen types` remote vs 18 migrasi lokal | 24 tabel, kolom identik, nol beda |
+
+Probe peran adalah bukti yang tepat untuk migrasi ini: kalau re-grant
+`has_role` salah, setiap policy yang memakainya akan melempar `42501`, bukan
+mengembalikan baris terbatas. Produksi tetap belum menerima migrasi apa pun.
