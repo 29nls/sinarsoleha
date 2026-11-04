@@ -2,8 +2,8 @@
 
 Laporan baca-saja atas seluruh produk uji (`TEST-*`, `HOST-*`) di project
 preview `ptbllrugrjepdhhdkzxn`. Dokumen ini adalah dasar keputusan pembersihan
-sebelum produksi; **tidak ada satu pun baris yang diubah, dinonaktifkan, atau
-dihapus** saat audit dijalankan.
+sebelum produksi. Audit awal bersifat baca-saja; delapan fixture aktif kemudian
+diarsipkan pada 4 November 2026 setelah gate terpisah — lihat §7.
 
 - Skrip: `scripts/fixture-audit.mjs` (`--json` untuk keluaran mesin)
 - Dijalankan: 4 November 2026, 08:26 UTC
@@ -42,18 +42,18 @@ audit tetap dilaporkan di kolom tersendiri agar tidak hilang dari pandangan.
 | Metrik | Nilai |
 | --- | --- |
 | Produk uji ditemukan | **48** |
-| Aktif | 8 |
-| Nonaktif | 40 |
+| Aktif | 0 |
+| Nonaktif | 48 |
 | Klasifikasi A (tak direferensikan) | **0** |
 | Klasifikasi B | 13 |
-| Klasifikasi C | 3 |
-| Klasifikasi D | 32 |
+| Klasifikasi C | 0 |
+| Klasifikasi D | 35 |
 | Baris `transaction_items` | 39 |
 | Baris `payments` (transaksi yang memuat produk uji) | 39 |
 | Baris `stock_movements` | 104 |
 | Baris `stock_opname_items` | 80 (53 di antaranya pada sesi `posted`) |
 | Baris `stock_discrepancy_logs` | 13 |
-| Baris `audit_logs` (`entity_name = 'products'`) | 92 |
+| Baris `audit_logs` (`entity_name = 'products'`) | 92 + 8 (arsip) |
 | Baris `product_costs` | 5 |
 | Baris `product_aliases` | 0 |
 | Rentang pembuatan produk uji | 2 Nov 2026 01:31 UTC – 4 Nov 2026 07:34 UTC |
@@ -62,28 +62,34 @@ audit tetap dilaporkan di kolom tersendiri agar tidak hilang dari pandangan.
 **Tidak ada kandidat klasifikasi A.** Karena itu laporan ini tidak mengusulkan
 satu pun penghapusan fisik, dan tidak ada `DELETE` yang menunggu approval.
 Pembersihan yang diusulkan seluruhnya berbentuk pengarsipan (nonaktifkan).
+Angka di atas adalah kondisi setelah arsip; sebelum arsip: 8 aktif, C=3, D=32,
+audit 92. Delapan `product.update` baru berasal dari arsip.
 
 Audit ulang Phase 5E.1 pada 4 November 2026 09:48 UTC mengembalikan angka yang
-sama, 8 UUID aktif yang sama, dan tidak ada fixture baru. Rencana eksekusi
-memakai RPC owner, bukan `UPDATE` langsung — lihat §7.
+sama, 8 UUID aktif yang sama, dan tidak ada fixture baru. Eksekusi memakai RPC
+owner, bukan `UPDATE` langsung; delapan produk dinonaktifkan pada 4 November
+2026 — lihat §7.
 
 ## 4. Kelompok fixture
 
 | Grup | Jumlah | Aktif | Klas. | Movement | Tx item | Opname item | Log | Audit | Cost |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `HOST-*` | 5 | 5 | B×5 | 0 | 0 | 0 | 0 | 10 | 5 |
+| `HOST-*` | 5 | 0 | B×5 | 0 | 0 | 0 | 0 | 15 | 5 |
 | `TEST-OPN-*` | 12 | 0 | B×2, D×10 | 20 | 2 | 32 | 8 | 24 | 0 |
 | `TEST-OPN-E2E-*` | 24 | 0 | B×3, D×21 | 29 | 3 | 41 | 5 | 48 | 0 |
 | `TEST-REALTIME-*` | 4 | 0 | B×3, D×1 | 1 | 0 | 4 | 0 | 4 | 0 |
-| `TEST-TXN-*` | 3 | 3 | C×3 | 54 | 34 | 3 | 0 | 6 | 0 |
+| `TEST-TXN-*` | 3 | 0 | D×3 | 54 | 34 | 3 | 0 | 9 | 0 |
+
+Tabel ini menunjukkan kondisi setelah arsip; sebelum arsip, 8 produk aktif
+(5 `HOST-*`, 3 `TEST-TXN-*`) dan `TEST-TXN-*` masuk C.
 
 Catatan per grup:
 
 - **`HOST-*`** — dibuat oleh `scripts/inventory-hosted-smoke.mjs`. Semuanya
-  masih aktif, berstok `NULL`, tanpa movement dan tanpa baris opname. Satu-
-  satunya referensi adalah `product_costs` (1 per produk) dan 2 baris audit.
-  Ini kelompok paling aman untuk dinonaktifkan, tetapi tetap bukan kandidat
-  hapus karena `product_costs` punya FK.
+  sudah diarsipkan (nonaktif), berstok `NULL`, tanpa movement dan tanpa baris
+  opname. Satu-satunya referensi adalah `product_costs` (1 per produk) dan
+  audit. Ini kelompok paling aman untuk dinonaktifkan, tetapi tetap bukan
+  kandidat hapus karena `product_costs` punya FK.
 - **`TEST-OPN-*`** — fixture suite DB/hosted Phase 5A–5D. Sebagian besar sudah
   nonaktif dan memiliki movement `opening_balance` / `opname_adjustment`.
   Dua produk (`TEST-OPN-A-*`) masih menyimpan 30 unit dan menjadi bahan uji
@@ -93,18 +99,18 @@ Catatan per grup:
   masuk B; sisanya sudah pernah diposting.
 - **`TEST-REALTIME-*`** — empat produk uji Broadcast Phase 10. Tiga tanpa
   movement (B), satu dengan `opening_balance` 7 unit (D).
-- **`TEST-TXN-*`** — tiga produk aktif dengan riwayat transaksi nyata
-  (34 baris item, 54 movement, termasuk `void_reversal`). Ini kelompok yang
-  **paling berbahaya** untuk dihapus dan paling perlu diarsipkan dengan hati-
-  hati: `TEST-TXN-RACE-001` bahkan punya 6 baris audit.
+- **`TEST-TXN-*`** — tiga produk yang diarsipkan dengan riwayat transaksi
+  nyata (34 baris item, 54 movement, termasuk `void_reversal`). Ini kelompok
+  yang **paling berbahaya** untuk dihapus dan paling perlu diarsipkan dengan
+  hati-hati: `TEST-TXN-RACE-001` bahkan punya 7 baris audit setelah arsip.
 
-## 5. Produk yang masih aktif
+## 5. Produk yang diarsipkan
 
-Delapan produk aktif adalah yang paling relevan untuk kesiapan produksi:
+Delapan produk ini aktif saat audit dan diarsipkan pada 4 November 2026:
 
-| SKU | Klas. | Stok | Tx item | Movement | Kenapa masih aktif |
+| SKU | Klas. awal | Stok | Tx item | Movement | Alasan diarsipkan |
 | --- | --- | --- | --- | --- | --- |
-| `HOST-MVYL2SIG` | B | NULL | 0 | 0 | Sisa smoke hosted, belum diarsipkan |
+| `HOST-MVYL2SIG` | B | NULL | 0 | 0 | Sisa smoke hosted |
 | `HOST-MVYLDP3O` | B | NULL | 0 | 0 | idem |
 | `HOST-MVYM9JCA` | B | NULL | 0 | 0 | idem |
 | `HOST-MVYMF06P` | B | NULL | 0 | 0 | idem |
@@ -113,10 +119,10 @@ Delapan produk aktif adalah yang paling relevan untuk kesiapan produksi:
 | `TEST-TXN-PAY-001` | C | 1 | 18 | 22 | Fixture uji pembayaran |
 | `TEST-TXN-RACE-001` | C | 0 | 3 | 12 | Fixture uji konkurensi |
 
-Kelima `HOST-*` tidak punya riwayat ledger sama sekali, jadi menonaktifkannya
-tidak mengubah satu pun angka stok. Tiga `TEST-TXN-*` punya riwayat penuh;
-menonaktifkannya hanya menyembunyikannya dari katalog/checkout, tidak menyentuh
-ledger.
+Kelima `HOST-*` tidak punya riwayat ledger sama sekali, jadi arsipnya tidak
+mengubah satu pun angka stok. Tiga `TEST-TXN-*` punya riwayat penuh; arsipnya
+hanya menyembunyikan produk dari katalog/checkout, tidak menyentuh ledger.
+Klasifikasi akhir ketiganya menjadi D karena sudah nonaktif.
 
 ## 6. Inventaris lengkap
 
@@ -124,7 +130,8 @@ Kolom `Tx` = baris `transaction_items`, `Mov` = `stock_movements`, `Opname` =
 baris `stock_opname_items`, `Log` = `stock_discrepancy_logs`, `Audit` =
 `audit_logs` dengan `entity_name = 'products'`, `Cost` = `product_costs`,
 `Alias` = `product_aliases`. Stok `—` berarti `NULL` (belum diketahui), bukan
-nol.
+nol. Tabel ini adalah snapshot audit sebelum arsip; setelah 4 November 2026,
+baris 1–5 dan 46–48 berstatus nonaktif dan auditnya bertambah satu.
 
 | # | Klas. | SKU | Nama | Aktif | Stok | v | Tx | Mov | Opname | Log | Audit | Cost | Alias | UUID |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -177,13 +184,13 @@ nol.
 | 47 | C | `TEST-TXN-PAY-001` | TEST Payment Produk | ya | 1 | 11 | 18 | 22 | 1 | 0 | 0 | 0 | 0 | `a1000000-0000-4000-8000-000000000003` |
 | 48 | C | `TEST-TXN-RACE-001` | TEST Race Produk | ya | 0 | 7 | 3 | 12 | 1 | 0 | 6 | 0 | 0 | `a1000000-0000-4000-8000-000000000001` |
 
-## 7. Rencana pengarsipan (dry-run, belum dieksekusi)
+## 7. Pengarsipan (sudah dieksekusi)
 
 Audit ulang Phase 5E.1 pada 4 November 2026 09:48 UTC mengembalikan 48 produk
 yang sama, 8 aktif, dan klasifikasi yang sama (A=0, B=13, C=3, D=32). Tidak ada
-penghapusan. Rencana hanya menonaktifkan 8 produk aktif dan membiarkan seluruh
-riwayat apa adanya. Migrasi 0021–0023 sudah diterapkan; itu tidak mengubah satu
-pun fixture, dan pengarsipan tetap menunggu gate terpisah.
+penghapusan. Delapan produk aktif dinonaktifkan dan seluruh riwayat dibiarkan
+apa adanya. Migrasi 0021–0023 sudah diterapkan; itu tidak mengubah satu pun
+fixture. Gate arsip diberikan terpisah dan eksekusi dijalankan 4 November 2026.
 
 ### 7.1 Metode: RPC owner, bukan UPDATE langsung
 
@@ -234,6 +241,10 @@ Dampak yang diperkirakan:
 | `product_costs` | 5 | 5 | Tidak disentuh |
 | Stok `NULL` produk impor | 1.361 | 1.361 | Tidak disentuh |
 
+Hasil 4 November 2026: 8/8 RPC berhasil; aktif 8 → 0; total 48; klasifikasi
+A=0, B=13, C=0, D=35; stok/versi dan seluruh ledger tidak berubah; audit +8;
+regresi read-only 11/11.
+
 Catatan penting: menonaktifkan `TEST-TXN-*` **tidak** membatalkan transaksi
 lama. Riwayat transaksi tetap dapat dibuka di `/cashier/transactions`, dan
 laporan tetap menghitungnya. Yang berubah hanya visibilitas produk di katalog
@@ -241,7 +252,7 @@ dan pencarian kasir.
 
 ### 7.2 Gate approval (terpisah)
 
-Eksekusi hanya boleh berjalan setelah owner menulis tepat:
+Eksekusi dijalankan setelah owner menulis tepat:
 
 ```
 APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
@@ -250,7 +261,7 @@ APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
 Gate ini **bukan** bagian dari `APPROVE PHASE 5E MIGRATIONS TO PREVIEW`.
 Menyetujui migrasi tidak menyetujui pengarsipan, dan sebaliknya.
 
-### 7.3 Yang tidak akan dilakukan
+### 7.3 Yang tidak dilakukan
 
 - Tidak menghapus produk, movement, baris opname, log selisih, transaksi,
   pembayaran, atau audit — meskipun produknya nonaktif.

@@ -141,10 +141,9 @@ ada movement, log selisih, atau audit yang dihapus — ledger tetap append-only.
 
 ## 7. Temuan yang belum diperbaiki
 
-> **Status per Phase 5E.1 (4 November 2026):** butir 1 dan 2 sudah diperbaiki
-> dan tiga migrasi 0021–0023 sudah diterapkan ke preview; regresi read-only
-> 11/11 lulus. Butir 5 (pengarsipan fixture) masih menunggu approval terpisah.
-> Butir 3 dan 4 tetap terbuka.
+> **Status per Phase 5E.1 (4 November 2026):** butir 1, 2, dan 5 sudah
+> diperbaiki; tiga migrasi 0021–0023 diterapkan, regresi read-only 11/11 lulus,
+> dan delapan fixture aktif diarsipkan. Butir 3 dan 4 tetap terbuka.
 
 1. ~~**Pembacaan detail terpotong 1.000 baris.**~~ **Diperbaiki di 5E.** Detail
    tidak lagi memuat item; header dan counter berasal dari
@@ -161,10 +160,11 @@ ada movement, log selisih, atau audit yang dihapus — ledger tetap append-only.
    Skenario yang dijalankan hanya butuh satu; independensi sesi dibuktikan
    dengan dua klien owner untuk posting paralel. Instruksi pembuatan ada di
    `docs/17-users-audit.md`.
-5. ~~**Fixture uji menumpuk di preview.**~~ **Diinventarisasi di 5E.** Audit
-   read-only atas 48 produk: A=0, B=13, C=3, D=32; tidak ada kandidat hapus
-   fisik. Rencana pengarsipan dan dry-run ada di
-   `docs/20-preview-fixture-inventory.md`, menunggu approval owner.
+5. ~~**Fixture uji menumpuk di preview.**~~ **Diinventarisasi dan diarsipkan
+   di 5E.** Audit read-only atas 48 produk menemukan A=0, B=13, C=3, D=32 dan
+   tidak ada kandidat hapus fisik. Delapan fixture aktif sudah dinonaktifkan;
+   hasilnya A=0, B=13, C=0, D=35. Rincian ada di
+   `docs/20-preview-fixture-inventory.md`.
 
 ## 8. Batasan yang jujur
 

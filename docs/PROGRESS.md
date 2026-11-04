@@ -1424,15 +1424,32 @@ pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.
 
 ### Gate
 
-Gate migrasi sudah dijalankan dengan frasa persis. Gate yang masih terbuka:
-
-```
-APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
-```
+Gate migrasi sudah dijalankan dengan frasa persis. Gate arsip dijalankan
+terpisah pada Phase 5E.2 di bawah.
 
 Tidak ada gate yang boleh disimpulkan dari gate lainnya. Detail lengkap ada di
 `docs/21-phase-5e-hosted-readiness.md`.
 
-**Status: Phase 5E.1 selesai untuk deployment dan regresi read-only.
-Pengarsipan fixture dan staf B tetap terbuka; tidak ada data operasional yang
-diubah.**
+**Status: Phase 5E.1 selesai untuk deployment dan regresi read-only.**
+
+## 4 November 2026 — Phase 5E.2 (arsip 8 fixture)
+
+### Gate
+
+`APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES`
+
+### Eksekusi
+
+- 8 payload `upsert_product` dibangun dari master saat ini; hanya `is_active`
+  berubah menjadi `false`.
+- 8/8 RPC berhasil; fixture aktif 8 → 0; total 48 tetap.
+- Klasifikasi ulang: **A=0, B=13, C=0, D=35**.
+- Stok/versi, 104 movement, 39 transaction item, 39 payment, 80 opname item,
+  13 log selisih, dan 5 product cost tidak berubah; audit +8.
+- `npm run test:hosted:opname` diulang: **11/11**.
+- Tidak ada `DELETE`, `CASCADE`, saldo awal, atau posting; produksi tidak disentuh.
+
+### Status
+
+Phase 5F belum dimulai. Blocker yang tersisa adalah akun `INVENTORY_STAFF_B`
+yang harus dibuat dan diverifikasi owner.

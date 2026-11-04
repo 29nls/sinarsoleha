@@ -1,16 +1,13 @@
 # 21 — Kesiapan Hosted Phase 5E.1
 
 Status per 4 November 2026: **tiga migrasi Phase 5E sudah diterapkan ke preview
-(23/23) dan regresi read-only 11/11 lulus. Pengarsipan delapan fixture masih
-menunggu gate terpisah; staf B belum ada.**
+(23/23), regresi read-only 11/11 lulus, dan delapan fixture aktif sudah
+diarsipkan. Staf B belum ada.**
 
-Gate yang masih terbuka:
-
-1. `APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES`
-
-Gate migrasi sudah dijalankan dengan frasa persis
-`APPROVE PHASE 5E MIGRATIONS TO PREVIEW`. Persetujuan itu tidak mencakup
-pengarsipan fixture.
+Tidak ada gate approval yang tersisa. Gate migrasi dijalankan dengan frasa
+`APPROVE PHASE 5E MIGRATIONS TO PREVIEW`; gate arsip dijalankan terpisah dengan
+frasa `APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES`. Langkah owner berikutnya
+adalah membuat `INVENTORY_STAFF_B`; Phase 5F belum dimulai.
 
 ## 1. Guardrail
 
@@ -162,12 +159,12 @@ awal pada produk `TEST-OPN-*`; keduanya **ditunda** sampai owner memberi
 otorisasi tertulis terpisah, karena bertentangan dengan larangan posting pada
 §13 spesifikasi 5E.1. Produk impor tetap tidak disentuh oleh suite itu.
 
-## 7. Audit ulang fixture dan dry-run pengarsipan
+## 7. Audit ulang dan eksekusi pengarsipan
 
 Audit ulang read-only (4 November 2026 09:48 UTC) mengembalikan angka yang sama:
 **A=0, B=13, C=3, D=32**, 8 aktif, 40 nonaktif. Tidak ada produk baru, tidak ada
-perubahan stok, dan tidak ada referensi baru. Migrasi 0021–0023 sudah diterapkan;
-audit ini dan pengarsipan tidak berubah karenanya.
+perubahan stok, dan tidak ada referensi baru. Setelah gate arsip diberikan,
+delapan produk dinonaktifkan pada 4 November 2026 lewat RPC owner.
 
 Metode: RPC owner `public.upsert_product`, bukan `UPDATE` langsung. RPC ini
 owner-only, menulis audit `product.update`, dan **tidak menyentuh**
@@ -175,7 +172,7 @@ owner-only, menulis audit `product.update`, dan **tidak menyentuh**
 produk + `is_active`). Payload memakai nilai master yang sekarang, jadi tidak
 ada field yang berubah selain `is_active`.
 
-Payload dry-run (8 baris, belum dieksekusi):
+Payload yang dieksekusi (8 baris):
 
 ```json
 {"product_id":"164b53c4-3ed5-4aa4-8c3c-8c499a5b9a4a","sku":"HOST-MVYL2SIG","name":"Hosted Smoke mvyl2sig Updated","unit_id":1,"category_id":1,"sale_price":13000,"low_stock_threshold":null,"import_review_status":"verified","is_active":false}
@@ -202,6 +199,19 @@ Dampak yang diperkirakan:
 | `audit_logs` | 92 | 92 + 8 | `product.update` dari RPC |
 | `product_costs` | 5 | 5 | Tidak disentuh |
 | Produk impor `NULL` | 1.361 | 1.361 | Tidak disentuh |
+
+Hasil eksekusi 4 November 2026:
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| RPC `upsert_product` | 8/8 berhasil |
+| Fixture aktif | 8 → **0** |
+| Total fixture | 48 (tidak berubah) |
+| Klasifikasi ulang | A=0, B=13, C=0, D=35 (C→D karena nonaktif) |
+| Stok / versi | 8 nilai tidak berubah |
+| Ledger | 104 movement, 39 transaction item, 39 payment, 80 opname item, 13 log selisih, 5 cost — tidak berubah |
+| Audit | +8 baris `product.update` |
+| Regresi read-only | **11/11** setelah arsip |
 
 Yang tidak dilakukan: `DELETE`, `CASCADE`, mengubah stok, menghapus movement,
 transaksi, pembayaran, opname posted, log selisih, atau audit.
@@ -235,7 +245,8 @@ Kesiapan dua orang **belum** boleh diklaim sampai akun itu ada dan terverifikasi
 | Validasi RPC hosted | **selesai** — 11/11 read-only |
 | Tipe remote | diregenerasi dari `--linked`; typecheck/test/build lulus |
 | Audit ulang fixture | selesai — 8 identitas sama |
-| Pengarsipan 8 fixture | **menunggu gate 2** |
+| Audit pasca-arsip | selesai — A=0, B=13, C=0, D=35; 48 fixture |
+| Pengarsipan 8 fixture | **selesai** — 8 nonaktif, 0 aktif |
 | Staf B | menunggu owner membuat akun |
 | Suite mutasi 5D / E2E | menunggu otorisasi tertulis terpisah |
 | Produksi | tidak disentuh |
@@ -244,7 +255,6 @@ Kesiapan dua orang **belum** boleh diklaim sampai akun itu ada dan terverifikasi
 
 1. Migrasi sudah diterapkan dan tervalidasi; pertahankan 23/23 dan ulangi
    regresi read-only setelah setiap perubahan schema.
-2. Setelah gate 2, jalankan 8 payload arsip, verifikasi `is_active=false` dan
-   stok tidak berubah, lalu audit ulang.
+2. Arsip fixture sudah selesai; jangan mengaktifkan kembali tanpa keputusan owner.
 3. Owner membuat `INVENTORY_STAFF_B` dan memverifikasi aksesnya.
-4. Baru setelah itu Phase 5F — stok opname fisik nyata.
+4. Setelah staf B ada dan terverifikasi, Phase 5F — stok opname fisik nyata.
