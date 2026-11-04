@@ -272,7 +272,7 @@ Proyek dinyatakan siap pakai bila seluruh butir ini benar:
 - [ ] C1–C4 selesai; `disable_signup: true`, header keamanan terpasang, rate limit terbukti
 - [ ] C5 tuntas: backup produksi diputuskan (D1a) **dan** satu restore ke project uji dibuktikan, bukan hanya replay migrasi
 - [ ] D1–D6 selesai; produksi menerima 23/23 migrasi dan UAT ditandatangani
-- [ ] D1a selesai; paket backup atau dump terjadwal tertulis, termasuk kebijakan jeda project tak aktif pada paket itu
+- [ ] D1a selesai; paket backup atau dump terjadwal tertulis **dan** satu restore ke project uji terbukti, termasuk kebijakan jeda project tak aktif pada paket itu
 - [ ] D1b selesai; env produksi + `site_url`/redirect Auth menunjuk domain produksi, bukan `127.0.0.1` atau preview
 - [ ] Owner menandatangani daftar batasan `docs/16` §6
 
