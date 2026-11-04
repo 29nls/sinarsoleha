@@ -1599,3 +1599,31 @@ mengulang lebih keras justru saat ia harus berhenti. Tes diuji balik dengan
 mematikan cabang rate limit — 2 tes jatuh, lalu hijau setelah dikembalikan.
 
 Regresi: vitest 288/288 (22 file), typecheck bersih.
+
+## C2 — Audit akun: rencana awal ternyata berbahaya
+
+C2 semula berbunyi "hapus akun `phase*`". Sebelum mengeksekusi, saya audit
+read-only (`scripts/account-audit.mjs`). Hasilnya membatalkan rencana itu:
+
+- **Preview tidak punya akun nyata sama sekali.** Keenam akun adalah artefak
+  uji, termasuk satu-satunya `owner`. Menghapus semuanya = mencabut seluruh
+  akses login, termasuk akun yang dipakai semua skrip verifikasi.
+- **Akun uji adalah pelaku 4.539 baris `audit_logs`.** `actor_id` memakai
+  `on delete set null`, dan `audit_logs_immutable` melarang `update`/`delete`.
+  Menghapus profil akan mengosongkan pelaku di seluruh riwayat, permanen dan
+  tidak bisa diperbaiki — persis larangan "jangan hapus riwayat".
+
+Yang aman dan sudah memenuhi kriteria: **0 dari 48 fixture `TEST-*`/`HOST-*`
+aktif**. Skrip smoke memang menonaktifkan fixture di akhir dan memverifikasi
+riwayatnya tetap ada.
+
+Keputusan: penghapusan akun **tidak dijalankan di preview**. Kebutuhannya
+dipindahkan ke `D3a` — produksi harus mulai dari database kosong, bukan salinan
+preview, sehingga akun dan riwayat uji ini tidak pernah ikut.
+
+Catatan proses: versi pertama `account-audit.mjs` melaporkan "1.000 baris audit"
+karena PostgREST membatasi satu response ke 1.000 baris. Angka itu under-report
+diam-diam pada justru metrik yang menentukan boleh-tidaknya hapus akun. Sudah
+diperbaiki dengan paginasi; angka benar 4.539 baris, 4 akun sebagai pelaku.
+
+Regresi: vitest 288/288, typecheck bersih.

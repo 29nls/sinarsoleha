@@ -19,7 +19,8 @@
     "audit:bundle": "node scripts/audit-bundle.mjs",
     "gen:types": "node scripts/gen-types.mjs",
     "import:products": "node scripts/product-import.mjs",
-    "test:hosted:opname:staff-b": "node scripts/opname-staff-b-readiness.mjs"
+    "test:hosted:opname:staff-b": "node scripts/opname-staff-b-readiness.mjs",
+    "audit:accounts": "node scripts/account-audit.mjs"
   },
   "dependencies": {
     "@pinia/nuxt": "^1.0.3",

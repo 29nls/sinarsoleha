@@ -64,7 +64,7 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | --- | --- | --- | --- |
 | C1 | Nyalakan `disable_signup` di hosted | Teknis | `GET /auth/v1/settings` → `disable_signup: true` |
 | C1a | Pastikan provider login email tetap hidup | Teknis | `external.email: true` dan owner bisa login |
-| C2 | Bersihkan akun & data uji preview | Teknis | tidak ada akun `phase*`, 0 fixture `TEST-*`/`HOST-*` aktif |
+| C2 | Bersihkan akun & data uji preview | Teknis | 0 fixture `TEST-*`/`HOST-*` aktif; akun uji **diarsipkan, bukan dihapus** (lihat di bawah) |
 | C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi ✅ |
 | C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi ✅ |
 | C5 | Uji backup & restore | Teknis | restore ke project uji menghasilkan 23/23 migrasi + data utuh |
@@ -128,6 +128,29 @@ Dijaga oleh `tests/security-headers.test.ts` (7 pemeriksaan). Tes ini sudah
 diuji balik: menghapus header HSTS membuatnya gagal, lalu hijau lagi setelah
 dikembalikan.
 
+C2 **tidak dikerjakan dengan cara yang tertulis semula.** Audit read-only
+(`scripts/fixture-audit.mjs`, tanpa menulis apa pun) menemukan dua hal yang
+membatalkan rencana "hapus akun `phase*`":
+
+1. **Preview tidak punya akun nyata sama sekali.** Keenam akun yang ada adalah
+   artefak uji, termasuk satu-satunya `owner`. Menghapus semua akun `phase*`
+   berarti mencabut seluruh akses login — termasuk akun yang dipakai semua
+   skrip verifikasi.
+2. **Akun uji adalah pelaku 4.539 baris `audit_logs`.** Kolom `actor_id`
+   didefinisikan `references public.profiles(id) on delete set null`, jadi
+   menghapus profil akan mengosongkan pelaku di seluruh riwayat. Trigger
+   `audit_logs_immutable` melarang `update`/`delete`, sehingga kerusakan itu
+   **tidak bisa diperbaiki**. Ini persis larangan "jangan hapus riwayat".
+
+Yang sudah memenuhi kriteria tanpa tindakan apa pun: **0 dari 48 fixture
+`TEST-*`/`HOST-*` aktif**. Skrip smoke memang menonaktifkan fixture di akhir
+(`is_active: false`) dan memverifikasi riwayatnya tetap ada — bukan dihapus.
+
+Status C2: **sebagian selesai**. Fixture beres. Penghapusan akun ditunda dan
+dipindahkan ke Tahap D sebagai `D3a`, karena yang benar-benar dibutuhkan bukan
+membersihkan preview, melainkan **memastikan produksi tidak pernah menerima
+akun dan riwayat uji ini**.
+
 ## 5. Tahap D — Produksi (1–2 hari)
 
 | # | Langkah | Pemilik | Kriteria lulus |
@@ -135,6 +158,7 @@ dikembalikan.
 | D1 | Buat project Supabase produksi terpisah | Owner | project ref baru, region sama |
 | D2 | `db push` 23 migrasi ke produksi | Teknis | `migration list --linked` 23/23 |
 | D3 | Buat akun owner produksi + `disable_signup` | Owner | 1 owner aktif, signup tertutup |
+| D3a | Pastikan produksi mulai dari **database kosong**, bukan salinan preview | Teknis | 0 akun `phase*`, 0 `TEST-*`, 0 `HOST-*`, `audit_logs` hanya berisi aksi produksi |
 | D4 | Impor master 1.361 produk | Teknis | 1.361/1.361 imported, 0 review |
 | D5 | Isi saldo awal (ulangi Tahap B di produksi) | Staf gudang | 0 produk aktif `NULL` |
 | D6 | UAT produksi + latih kasir | Owner | checklist `docs/16` §5 ditandatangani |
