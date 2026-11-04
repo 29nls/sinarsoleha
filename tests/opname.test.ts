@@ -4,6 +4,7 @@ import {
   blockerCount,
   countStatusLabel,
   describeOpnameError,
+  effectiveSystemQty,
   isOpnameCancellable,
   isOpnameEditable,
   isOpnameFinal,
@@ -88,6 +89,42 @@ describe('count reason requirements', () => {
     expect(allowedReasons(null)).toEqual(['opening_balance'])
     expect(allowedReasons(5)).not.toContain('opening_balance')
     expect(allowedReasons(5)).toContain('missing')
+  })
+})
+
+describe('effectiveSystemQty', () => {
+  it('uses the session snapshot for an item that has not conflicted', () => {
+    expect(
+      effectiveSystemQty({
+        countStatus: 'counted',
+        systemQtySnapshot: 30,
+        currentQty: 25,
+      }),
+    ).toBe(30)
+  })
+
+  it('switches to live stock once the item needs a recount', () => {
+    expect(
+      effectiveSystemQty({
+        countStatus: 'needs_recount',
+        systemQtySnapshot: 30,
+        currentQty: 25,
+      }),
+    ).toBe(25)
+  })
+
+  it('keeps an unknown balance unknown, even after a recount flag', () => {
+    expect(
+      effectiveSystemQty({
+        countStatus: 'needs_recount',
+        systemQtySnapshot: null,
+        currentQty: null,
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null when no context has loaded yet', () => {
+    expect(effectiveSystemQty(null)).toBeNull()
   })
 })
 

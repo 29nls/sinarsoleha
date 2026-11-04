@@ -4,6 +4,9 @@ import type {
   CountItemResult,
   CreateOpnameInput,
   OpnameDetail,
+  OpnameItemContext,
+  OpnameItemPageParams,
+  OpnameItemPageResult,
   OpnameItemRow,
   OpnameListParams,
   OpnameListResult,
@@ -231,88 +234,130 @@ export async function listOpnames(
   return { rows, total: count ?? 0 }
 }
 
-const DETAIL_SELECT =
-  `id, opname_no, status, scope_note, created_at, submitted_at, approved_at, posted_at, cancelled_at, cancelled_reason,
-   stock_opname_items(
-     id, product_id, system_qty_snapshot, physical_qty, difference_qty, reason_code, reason_note,
-     count_status, counted_at,
-     products(sku, name, is_active, units_of_measure(label, decimal_scale))
-   )`
-
-interface OpnameDetailQueryRow {
-  id: string
-  opname_no: string
-  status: string
-  scope_note: string | null
-  created_at: string
-  submitted_at: string | null
-  approved_at: string | null
-  posted_at: string | null
-  cancelled_at: string | null
-  cancelled_reason: string | null
-  stock_opname_items: Array<{
-    id: string
-    product_id: string
-    system_qty_snapshot: number | null
-    physical_qty: number | null
-    difference_qty: number | null
-    reason_code: string | null
-    reason_note: string | null
-    count_status: string
-    counted_at: string | null
-    products: {
-      sku: string
-      name: string
-      is_active: boolean
-      units_of_measure: { label: string; decimal_scale: number } | null
-    } | null
-  }> | null
-}
-
+/**
+ * Session header plus global counters.
+ *
+ * This used to embed every item in one PostgREST request, which silently lost
+ * rows past the 1,000-row cap and made every counter depend on the truncation.
+ * The summary RPC aggregates in the database instead, so the numbers describe
+ * the whole session no matter how many items it holds.
+ */
 export async function getOpnameDetail(client: Client, opnameId: string): Promise<OpnameDetail> {
-  const { data, error } = await client
-    .from('stock_opnames')
-    .select(DETAIL_SELECT)
-    .eq('id', opnameId)
-    .single()
-
+  const { data, error } = await client.rpc('get_stock_opname_summary', {
+    p_opname_id: opnameId,
+  })
   if (error) fail(error)
 
-  const row = data as unknown as OpnameDetailQueryRow
-  const items = (row.stock_opname_items ?? [])
-    .map((item): OpnameItemRow => {
-      const product = item.products
-      return {
-        id: item.id,
-        productId: item.product_id,
-        sku: product?.sku ?? '—',
-        productName: product?.name ?? 'Produk tidak ditemukan',
-        unitLabel: product?.units_of_measure?.label ?? '',
-        decimalScale: product?.units_of_measure?.decimal_scale ?? 0,
-        isActive: product?.is_active ?? false,
-        systemQtySnapshot: nullableNum(item.system_qty_snapshot),
-        physicalQty: nullableNum(item.physical_qty),
-        differenceQty: nullableNum(item.difference_qty),
-        reasonCode: item.reason_code,
-        reasonNote: item.reason_note,
-        countStatus: item.count_status,
-        countedAt: item.counted_at,
-      }
-    })
-    .sort((a, b) => a.sku.localeCompare(b.sku))
+  const payload = asObject(data)
+  return {
+    id: str(payload.opname_id),
+    opnameNo: str(payload.opname_no),
+    status: str(payload.status),
+    scopeNote: nullableStr(payload.scope_note),
+    createdAt: str(payload.created_at),
+    submittedAt: nullableStr(payload.submitted_at),
+    approvedAt: nullableStr(payload.approved_at),
+    postedAt: nullableStr(payload.posted_at),
+    cancelledAt: nullableStr(payload.cancelled_at),
+    cancelledReason: nullableStr(payload.cancelled_reason),
+    itemCount: num(payload.item_count),
+    pendingCount: num(payload.pending_count),
+    countedCount: num(payload.counted_count),
+    needsRecountCount: num(payload.needs_recount_count),
+    postedCount: num(payload.posted_count),
+    openingBalanceCount: num(payload.opening_balance_count),
+    matchingCount: num(payload.matching_count),
+    discrepancyCount: num(payload.discrepancy_count),
+    blockerCount: num(payload.blocker_count),
+    readyForSubmit: payload.ready_for_submit === true,
+  }
+}
+
+function mapItem(payload: Record<string, unknown>): OpnameItemRow {
+  return {
+    id: str(payload.id),
+    productId: str(payload.product_id),
+    sku: str(payload.sku) || '—',
+    productName: str(payload.product_name) || 'Produk tidak ditemukan',
+    unitLabel: str(payload.unit_label),
+    decimalScale: num(payload.decimal_scale),
+    isActive: payload.is_active === true,
+    systemQtySnapshot: nullableNum(payload.system_qty_snapshot),
+    physicalQty: nullableNum(payload.physical_qty),
+    differenceQty: nullableNum(payload.difference_qty),
+    reasonCode: nullableStr(payload.reason_code),
+    reasonNote: nullableStr(payload.reason_note),
+    countStatus: str(payload.count_status),
+    countedAt: nullableStr(payload.counted_at),
+  }
+}
+
+/**
+ * One page of items, ordered by SKU with the item id as tie-breaker.
+ *
+ * The order is decided by the database: `products.sku` does not live on
+ * `stock_opname_items`, and ordering the page in the browser would only sort
+ * the rows that happened to arrive.
+ */
+export async function getOpnameItemsPage(
+  client: Client,
+  opnameId: string,
+  params: OpnameItemPageParams,
+): Promise<OpnameItemPageResult> {
+  const offset = (params.page - 1) * params.pageSize
+  const { data, error } = await client.rpc('list_stock_opname_items', {
+    p_opname_id: opnameId,
+    p_limit: params.pageSize,
+    p_offset: offset,
+    p_filter: params.filter,
+    p_search: params.search.trim() || undefined,
+  })
+  if (error) fail(error)
+
+  const payload = asObject(data)
+  const rawItems = Array.isArray(payload.items) ? payload.items : []
 
   return {
-    id: row.id,
-    opnameNo: row.opname_no,
-    status: row.status,
-    scopeNote: row.scope_note,
-    createdAt: row.created_at,
-    submittedAt: row.submitted_at,
-    approvedAt: row.approved_at,
-    postedAt: row.posted_at,
-    cancelledAt: row.cancelled_at,
-    cancelledReason: row.cancelled_reason,
-    items,
+    items: rawItems.map((item) => mapItem(asObject(item))),
+    total: num(payload.total),
+    page: params.page,
+    pageSize: params.pageSize,
+  }
+}
+
+/**
+ * Snapshot versus live product state for one item, used by the recount dialog.
+ * Advisory only: the count RPC rebases and returns the authoritative numbers.
+ */
+export async function getOpnameItemContext(
+  client: Client,
+  itemId: string,
+): Promise<OpnameItemContext> {
+  const { data, error } = await client.rpc('get_stock_opname_item_context', {
+    p_item_id: itemId,
+  })
+  if (error) fail(error)
+
+  const payload = asObject(data)
+  return {
+    itemId: str(payload.item_id),
+    opnameId: str(payload.opname_id),
+    opnameStatus: str(payload.opname_status),
+    productId: str(payload.product_id),
+    sku: str(payload.sku),
+    productName: str(payload.product_name),
+    isActive: payload.is_active === true,
+    unitLabel: str(payload.unit_label),
+    decimalScale: num(payload.decimal_scale),
+    systemQtySnapshot: nullableNum(payload.system_qty_snapshot),
+    stockVersionSnapshot: num(payload.stock_version_snapshot),
+    currentQty: nullableNum(payload.current_qty),
+    currentVersion: num(payload.current_version),
+    physicalQty: nullableNum(payload.physical_qty),
+    reasonCode: nullableStr(payload.reason_code),
+    reasonNote: nullableStr(payload.reason_note),
+    countStatus: str(payload.count_status),
+    countedAt: nullableStr(payload.counted_at),
   }
 }
 

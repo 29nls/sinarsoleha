@@ -779,9 +779,12 @@ disentuh.
   ini; keduanya tetap dilaporkan `unavailable`, bukan disimulasikan.
 - CSP/HSTS belum dipasang; harus dilakukan di lapisan hosting sebelum produksi.
 - Migrasi Phase 5A **masih menunggu approval** untuk preview
-  `ptbllrugrjepdhdhhdkzxn`; produksi tidak disentuh.
+  `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.
 
-## 5 November 2026 — Phase 9 (halaman pengguna, audit log, filter & ekspor inventaris)
+## 4 November 2026 — Phase 9 (halaman pengguna, audit log, filter & ekspor inventaris)
+
+> Judul ini semula bertanggal 5 November 2026. Dikoreksi pada Phase 5E: commit
+> `5e9df13` tercatat 4 November 2026, dan tanggal judul bukan bukti eksekusi.
 
 Menutup sisa pekerjaan UI: administrasi profil staf, pembacaan audit log,
 filter "stok rendah" yang sebelumnya ditunda, dan ekspor CSV halaman.
@@ -873,10 +876,13 @@ approval untuk preview; produksi tidak disentuh.
   tetapi katalog jauh lebih besar perlu view/RPC.
 - Ekspor CSV inventaris/audit hanya satu halaman, bukan seluruh hasil filter.
 - Migrasi Phase 5A **masih menunggu approval** untuk preview
-  `ptbllrugrjepdhdhhdkzxn`; UAT hosted, printer/scanner fisik, dan gateway QRIS
+  `ptbllrugrjepdhhdkzxn`; UAT hosted, printer/scanner fisik, dan gateway QRIS
   dinamis tetap tidak tersedia di lingkungan ini.
 
-## 5 November 2026 — Phase 10 (Realtime stok, POS-03 / NFR-04 / DB-16)
+## 4 November 2026 — Phase 10 (Realtime stok, POS-03 / NFR-04 / DB-16)
+
+> Judul ini semula bertanggal 5 November 2026. Dikoreksi pada Phase 5E: commit
+> `87ebb80` tercatat 4 November 2026.
 
 Menutup celah PRD terakhir yang belum punya kode: saldo stok antar-kasir kini
 tersinkron tanpa muat ulang. Realtime hanya untuk tampilan; checkout tetap
@@ -961,11 +967,11 @@ menjalankan `20261104100000` dan `20261105100000`; riwayat 3B/4A dicatat lewat
 ## 4 November 2026 — Penerapan migrasi ke preview (Phase 5A + Realtime)
 
 Owner menyetujui penerapan Phase 5A + Broadcast ke preview
-`ptbllrugrjepdhdhhdkzxn`. Produksi tidak disentuh.
+`ptbllrugrjepdhhdkzxn`. Produksi tidak disentuh.
 
 ### Langkah
 
-1. `supabase link --project-ref ptbllrugrjepdhdhhdkzxn` (CLI v2.122.0).
+1. `supabase link --project-ref ptbllrugrjepdhhdkzxn` (CLI v2.122.0).
 2. Verifikasi pra-push: `db dump`/`db pull` tidak bisa (Docker tidak tersedia),
    jadi keberadaan objek diprobe lewat REST. Tabel `product_import_runs`/
    `product_import_rows` ada dan RPC `begin_product_import`, `complete_sale`,
@@ -1008,7 +1014,10 @@ nonaktif, tidak terlihat di kasir).
 lapisan hosting, rate limit login, backup/restore teruji, dan `db push` ke
 project produksi terpisah — semuanya masih terbuka.
 
-## 6 November 2026 — Phase 11 (Koreksi stok manual, DB-03)
+## 4 November 2026 — Phase 11 (Koreksi stok manual, DB-03)
+
+> Judul ini semula bertanggal 6 November 2026. Dikoreksi pada Phase 5E: commit
+> `cf5392a` tercatat 4 November 2026.
 
 Melengkapi RPC mutasi terakhir yang masih kontrak. Koreksi manual kini punya
 jalur resmi: satu movement `manual_adjustment` beralasan, audit, dan idempotensi
@@ -1187,7 +1196,7 @@ mengembalikan baris terbatas. Produksi tetap belum menerima migrasi apa pun.
 | Produk `WAL-W1303` | jual 20.000 / beli 9.500, stok NULL, tanpa `sale_below_cost`, 0 movement |
 | Katalog | 1.373 produk, 0 dengan jual < beli |
 
-Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugrjepdhdhhdkzxn`.
+Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugrjepdhhdkzxn`.
 
 ## 4 November 2026 — Phase 5D (validasi inventaris hosted)
 
@@ -1233,3 +1242,125 @@ Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugr
 - Detail opname seluruh katalog terpotong 1.000 baris oleh PostgREST.
 - Dialog recount menampilkan snapshot lama setelah konflik (meminta alasan yang dibuang server).
 - Fixture `TEST-OPN-*` menumpuk di preview dan harus dibersihkan sebelum produksi.
+
+## 4 November 2026 — Phase 5E (keandalan inventaris & kesiapan operasional)
+
+### Lingkup
+
+- Menutup tiga temuan Phase 5D: truncation PostgREST 1.000 baris, snapshot recount
+  yang basi, dan akumulasi fixture preview.
+- Menyiapkan aplikasi untuk stok opname fisik nyata tanpa membuat sesi nyata,
+  tanpa mengisi jumlah fisik, dan tanpa memposting saldo awal.
+- Tiga migrasi baru (**0021–0023**) ditulis dan diuji lokal, **belum diterapkan
+  ke preview maupun produksi**.
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi | `supabase/migrations/20261106140000_opname_detail_summary.sql` (0021) |
+| Migrasi | `supabase/migrations/20261106140100_opname_item_pagination.sql` (0022) |
+| Migrasi | `supabase/migrations/20261106140200_opname_item_context.sql` (0023) |
+| Skrip audit | `scripts/fixture-audit.mjs` (read-only, `--json`, guard preview) |
+| Dokumentasi | `docs/20-preview-fixture-inventory.md` |
+
+### File dimodifikasi
+
+- `app/types/opname.ts` — `OPNAME_ITEM_FILTERS`, `OPNAME_PAGE_SIZES`,
+  `OpnameItemPageParams/Result`, `OpnameItemContext`, `effectiveSystemQty()`,
+  counter global pada `OpnameDetail`, kode error `INVALID_FILTER` /
+  `PRODUCT_NOT_FOUND`.
+- `app/services/opname.ts` — `getOpnameDetail` memakai RPC summary;
+  `getOpnameItemsPage` dan `getOpnameItemContext` baru; `DETAIL_SELECT` dihapus.
+- `app/composables/useOpnameDetail.ts` — state halaman + filter + pencarian
+  server-side, debounce 200 ms, request-id guard terpisah untuk detail dan item,
+  `fetchItemContext`, `count()` mem-patch baris dari respons RPC.
+- `app/pages/stock-opname/[id].vue` — filter server-side, pencarian, navigasi
+  halaman, pemilih ukuran halaman, `rangeStart–rangeEnd`, dialog memuat konteks
+  secara asinkron.
+- `app/components/opname/OpnameCountDialog.vue` — tiga angka terpisah (snapshot,
+  stok saat ini, pembanding), notice recount, validasi `effectiveSystemQty`.
+- `app/components/opname/OpnameItemTable.vue` — prop `emptyMessage` + overlay
+  loading.
+- `app/components/opname/OpnameActionPanel.vue` — delapan metrik dari ringkasan
+  global dan `readyForSubmit`.
+- `types/database.generated.ts` — tiga signature RPC baru (diedit manual;
+  `npm run gen:types` butuh akses remote).
+- `scripts/db-test.mjs` — Grup F4–F8 (paginasi, ringkasan, konteks, filter,
+  penjualan saat recount), H2–H4 (skala 1.417 item), dan I4 diubah menjadi
+  allowlist eksplisit.
+- `tests/opname-queries.test.ts`, `tests/opname-service.test.ts` — tes tipe,
+  filter, dan mapping respons.
+- `docs/12-stock-opname-ui.md` — §5 baru (paginasi, ringkasan, recount), dua
+  batasan lama dihapus, batasan baru yang jujur ditambahkan.
+- `README.md` — status Phase 5E dan tautan `docs/20`.
+
+### Solusi
+
+1. **Truncation.** `getOpnameDetail` tidak lagi mengambil item. Header dan
+   counter berasal dari `get_stock_opname_summary`; tabel memakai
+   `list_stock_opname_items` dengan `limit`/`offset` dan urutan
+   `p.sku ASC, i.id ASC`. Ukuran halaman 50/100/250, total dan jumlah halaman
+   berasal dari `count(*)` di database.
+2. **Ringkasan.** Delapan angka dihitung dengan `count(*) filter (...)` atas
+   seluruh sesi dalam satu query. `blocker_count` memakai predikat yang sama
+   dengan `submit_stock_opname`, sehingga `ready_for_submit` tidak bisa berbeda
+   dari keputusan server.
+3. **Recount.** `get_stock_opname_item_context` mengembalikan snapshot dan stok
+   terkini berdampingan; dialog memberi label berbeda untuk keduanya.
+   `record_stock_opname_count` tetap satu-satunya yang me-rebase, dan UI
+   memperbarui baris dari responsnya.
+
+### Verifikasi lokal
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **101/101** (sebelumnya 94) |
+| `npm test` | **275/275** (20 berkas; sebelumnya 257) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (12,1–15,1 detik pada tiga run; 1,92 MB / 474 kB gzip) |
+| `npm run audit:bundle` | 0 temuan (151 berkas, 2.581,2–2.581,3 kB) |
+| Paginasi 1.417 item | jalan penuh 151–261 ms pada tiga run, tanpa baris hilang/ganda |
+| Snapshot 1.417 item | 117–190 ms |
+| Ringkasan sesi | 2–4 ms |
+
+### Temuan fixture
+
+Audit read-only atas 48 produk `TEST-*`/`HOST-*`: **A=0, B=13, C=3, D=32**
+(8 aktif, 40 nonaktif), dengan 104 movement, 39 baris transaksi, 80 baris
+opname (53 terposting), 13 log selisih, dan 92 baris audit. Tidak ada kandidat
+hapus fisik; rekomendasi seluruhnya pengarsipan. Rincian per produk ada di
+`docs/20-preview-fixture-inventory.md`. **Belum ada perubahan hosted** — cleanup
+menunggu `APPROVE PREVIEW FIXTURE CLEANUP`.
+
+### Temuan staf kedua
+
+Hanya ada satu akun `inventory_staff` (`a3333333-…`) dari lima profil. Akun
+`INVENTORY_STAFF_B` belum ada dan harus dibuat owner lewat Supabase Auth
+Dashboard, lalu profilnya diverifikasi (trigger `handle_new_user`, peran default
+`cashier`, status aktif) sebelum dinaikkan ke `inventory_staff` di `/users`.
+Tidak ada kredensial yang dikarang dan sign-up publik tetap dimatikan.
+
+### Koreksi kronologi
+
+Beberapa judul di dokumen ini bertanggal 5 dan 6 November 2026, sedangkan
+seluruh commit berada pada 3–4 November 2026. Tanggal pada judul tersebut adalah
+**tanggal penulisan dokumen yang keliru**, bukan tanggal eksekusi:
+
+| Judul lama | Bukti sebenarnya |
+| --- | --- |
+| `5 November 2026 — Phase 9` | Commit `5e9df13`, 4 November 2026 |
+| `5 November 2026 — Phase 10` | Commit `87ebb80`, 4 November 2026 |
+| `6 November 2026 — Phase 11` | Commit `cf5392a`, 4 November 2026 |
+
+Nama berkas migrasi juga memakai nomor versi berurutan
+(`20261105100000`, `20261106100000`), bukan tanggal penerapan. Yang menjadi
+bukti penerapan adalah riwayat migrasi remote, dan itu hanya tersedia untuk
+migrasi sampai `20261106130000` (20/20). Migrasi 0021–0023 belum pernah
+diterapkan ke mana pun.
+
+### Status
+
+Phase 5E selesai untuk lingkup lokal. Tiga migrasi menunggu penerapan preview,
+cleanup fixture menunggu approval eksplisit, dan akun staf kedua menunggu
+pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.

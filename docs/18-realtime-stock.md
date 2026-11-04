@@ -109,7 +109,7 @@ mengembalikan angka, `resetStockVersions` membuka guard).
 ## Status penerapan
 
 Migrasi `20261105100000_stock_broadcast.sql` **sudah diterapkan ke preview**
-`ptbllrugrjepdhdhhdkzxn` pada 4 November 2026 lewat `supabase db push --linked`
+`ptbllrugrjepdhhdkzxn` pada 4 November 2026 lewat `supabase db push --linked`
 (lihat `docs/03-database-implementation.md` bagian 6). Verifikasi hosted:
 
 - `supabase migration list --linked` menunjukkan 16/16 versi sinkron.

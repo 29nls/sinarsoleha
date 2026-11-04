@@ -641,8 +641,17 @@ isOneToOne: false
 "finish_product_import":
 { Args: { "p_run_id": string,"p_status": string }; Returns: Json
                            },
+"get_stock_opname_item_context":
+{ Args: { "p_item_id": string }; Returns: Json
+                           },
+"get_stock_opname_summary":
+{ Args: { "p_opname_id": string }; Returns: Json
+                           },
 "import_product_import_row":
 { Args: { "p_run_id": string,"p_source_row_number": number }; Returns: Json
+                           },
+"list_stock_opname_items":
+{ Args: { "p_filter"?: string,"p_limit"?: number,"p_offset"?: number,"p_opname_id": string,"p_search"?: string }; Returns: Json
                            },
 "post_stock_opname":
 { Args: { "p_opname_id": string }; Returns: Json

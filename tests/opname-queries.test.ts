@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { getOpnameDetail, listOpnames } from '../app/services/opname'
+import {
+  getOpnameDetail,
+  getOpnameItemContext,
+  getOpnameItemsPage,
+  listOpnames,
+} from '../app/services/opname'
 
 /**
  * Minimal chainable stand-in for the supabase-js builder. Every filter method
@@ -22,6 +27,11 @@ function queryClient(result: { data: unknown; error: unknown; count?: number }) 
 
   const from = vi.fn().mockReturnValue(builder)
   return { client: { from } as never, from, calls, builder }
+}
+
+function rpcClient(result: { data: unknown; error: unknown }) {
+  const rpc = vi.fn().mockResolvedValue(result)
+  return { client: { rpc } as never, rpc }
 }
 
 describe('listOpnames', () => {
@@ -134,38 +144,96 @@ describe('listOpnames', () => {
 })
 
 describe('getOpnameDetail', () => {
-  const row = {
-    id: 'o-1',
+  const summary = {
+    opname_id: 'o-1',
     opname_no: 'OPN-1',
     status: 'counting',
-    scope_note: null,
+    scope_note: 'Rak A',
     created_at: '2026-11-04T09:00:00Z',
     submitted_at: null,
     approved_at: null,
     posted_at: null,
     cancelled_at: null,
     cancelled_reason: null,
-    stock_opname_items: [
-      {
-        id: 'i-2',
-        product_id: 'p-2',
-        system_qty_snapshot: null,
-        physical_qty: 4,
-        difference_qty: null,
-        reason_code: 'opening_balance',
-        reason_note: 'Awal',
-        count_status: 'counted',
-        counted_at: '2026-11-04T10:00:00Z',
-        products: {
-          sku: 'SKU-2',
-          name: 'Sabun',
-          is_active: true,
-          units_of_measure: { label: 'Pcs', decimal_scale: 0 },
-        },
-      },
+    item_count: 1361,
+    pending_count: 900,
+    counted_count: 449,
+    needs_recount_count: 12,
+    posted_count: 0,
+    opening_balance_count: 4,
+    matching_count: 300,
+    discrepancy_count: 145,
+    blocker_count: 912,
+    ready_for_submit: false,
+  }
+
+  it('reads the aggregated summary instead of embedding every item', async () => {
+    const { client, rpc } = rpcClient({ data: summary, error: null })
+
+    const detail = await getOpnameDetail(client, 'o-1')
+
+    expect(rpc).toHaveBeenCalledWith('get_stock_opname_summary', { p_opname_id: 'o-1' })
+    expect(detail).toMatchObject({
+      id: 'o-1',
+      itemCount: 1361,
+      pendingCount: 900,
+      countedCount: 449,
+      needsRecountCount: 12,
+      openingBalanceCount: 4,
+      matchingCount: 300,
+      discrepancyCount: 145,
+      blockerCount: 912,
+      readyForSubmit: false,
+    })
+  })
+
+  it('keeps a global count beyond the PostgREST row cap', async () => {
+    const { client } = rpcClient({ data: summary, error: null })
+
+    const detail = await getOpnameDetail(client, 'o-1')
+
+    // The old embedded query stopped at 1,000 rows; the database aggregate
+    // must still report the whole session.
+    expect(detail.itemCount).toBe(1361)
+    expect(detail.pendingCount + detail.countedCount + detail.needsRecountCount)
+      .toBe(detail.itemCount)
+  })
+
+  it('accepts a jsonb payload returned as a string', async () => {
+    const { client } = rpcClient({ data: JSON.stringify(summary), error: null })
+
+    const detail = await getOpnameDetail(client, 'o-1')
+    expect(detail.opnameNo).toBe('OPN-1')
+    expect(detail.readyForSubmit).toBe(false)
+  })
+
+  it('turns a missing session into a readable message', async () => {
+    const { client } = rpcClient({
+      data: null,
+      error: { message: 'OPNAME_NOT_FOUND: Sesi opname tidak ditemukan.' },
+    })
+
+    await expect(getOpnameDetail(client, 'missing')).rejects.toThrow('Sesi opname tidak ditemukan.')
+  })
+})
+
+describe('getOpnameItemsPage', () => {
+  const page = {
+    opname_id: 'o-1',
+    total: 1361,
+    limit: 50,
+    offset: 0,
+    filter: 'all',
+    search: null,
+    items: [
       {
         id: 'i-1',
         product_id: 'p-1',
+        sku: 'SKU-1',
+        product_name: 'Beras',
+        unit_label: 'Kg',
+        decimal_scale: 2,
+        is_active: true,
         system_qty_snapshot: 10,
         physical_qty: null,
         difference_qty: null,
@@ -173,49 +241,101 @@ describe('getOpnameDetail', () => {
         reason_note: null,
         count_status: 'pending',
         counted_at: null,
-        products: {
-          sku: 'SKU-1',
-          name: 'Beras',
-          is_active: false,
-          units_of_measure: { label: 'Kg', decimal_scale: 2 },
-        },
+      },
+      {
+        id: 'i-2',
+        product_id: 'p-2',
+        sku: 'SKU-2',
+        product_name: 'Sabun',
+        unit_label: 'Pcs',
+        decimal_scale: 0,
+        is_active: false,
+        system_qty_snapshot: null,
+        physical_qty: 4,
+        difference_qty: null,
+        reason_code: 'opening_balance',
+        reason_note: 'Awal',
+        count_status: 'counted',
+        counted_at: '2026-11-04T10:00:00Z',
       },
     ],
   }
 
-  it('maps rows and sorts them by SKU', async () => {
-    const { client } = queryClient({ data: row, error: null })
+  it('asks the database for one page with a deterministic offset', async () => {
+    const { client, rpc } = rpcClient({ data: page, error: null })
 
-    const detail = await getOpnameDetail(client, 'o-1')
+    const result = await getOpnameItemsPage(client, 'o-1', {
+      page: 3,
+      pageSize: 250,
+      filter: 'pending',
+      search: 'beras',
+    })
 
-    expect(detail.items.map((item) => item.sku)).toEqual(['SKU-1', 'SKU-2'])
-    expect(detail.items[0]).toMatchObject({
-      decimalScale: 2,
+    expect(rpc).toHaveBeenCalledWith('list_stock_opname_items', {
+      p_opname_id: 'o-1',
+      p_limit: 250,
+      p_offset: 500,
+      p_filter: 'pending',
+      p_search: 'beras',
+    })
+    expect(result.total).toBe(1361)
+    expect(result.page).toBe(3)
+    expect(result.pageSize).toBe(250)
+  })
+
+  it('omits a blank search so the RPC does not filter on an empty string', async () => {
+    const { client, rpc } = rpcClient({ data: page, error: null })
+
+    await getOpnameItemsPage(client, 'o-1', {
+      page: 1,
+      pageSize: 50,
+      filter: 'all',
+      search: '   ',
+    })
+
+    expect(rpc.mock.calls[0]?.[1]).toMatchObject({ p_search: undefined })
+  })
+
+  it('maps rows and preserves null balances', async () => {
+    const { client } = rpcClient({ data: page, error: null })
+
+    const result = await getOpnameItemsPage(client, 'o-1', {
+      page: 1,
+      pageSize: 50,
+      filter: 'all',
+      search: '',
+    })
+
+    expect(result.items[0]).toMatchObject({
+      sku: 'SKU-1',
+      productName: 'Beras',
       unitLabel: 'Kg',
-      isActive: false,
+      decimalScale: 2,
       systemQtySnapshot: 10,
+      countStatus: 'pending',
+    })
+    expect(result.items[1]).toMatchObject({
+      isActive: false,
+      systemQtySnapshot: null,
+      differenceQty: null,
+      reasonCode: 'opening_balance',
+      countStatus: 'counted',
     })
   })
 
-  it('keeps an unknown balance and its opening reason', async () => {
-    const { client } = queryClient({ data: row, error: null })
-
-    const detail = await getOpnameDetail(client, 'o-1')
-    const opening = detail.items.find((item) => item.sku === 'SKU-2')
-
-    expect(opening?.systemQtySnapshot).toBeNull()
-    expect(opening?.differenceQty).toBeNull()
-    expect(opening?.reasonCode).toBe('opening_balance')
-  })
-
-  it('falls back when the product relation is missing', async () => {
-    const { client } = queryClient({
+  it('falls back when the joined product is missing', async () => {
+    const { client } = rpcClient({
       data: {
-        ...row,
-        stock_opname_items: [
+        ...page,
+        items: [
           {
             id: 'i-9',
             product_id: 'p-9',
+            sku: null,
+            product_name: null,
+            unit_label: null,
+            decimal_scale: null,
+            is_active: false,
             system_qty_snapshot: 0,
             physical_qty: null,
             difference_qty: null,
@@ -223,27 +343,102 @@ describe('getOpnameDetail', () => {
             reason_note: null,
             count_status: 'pending',
             counted_at: null,
-            products: null,
           },
         ],
       },
       error: null,
     })
 
-    const detail = await getOpnameDetail(client, 'o-1')
-    expect(detail.items[0]).toMatchObject({
+    const result = await getOpnameItemsPage(client, 'o-1', {
+      page: 1,
+      pageSize: 50,
+      filter: 'all',
+      search: '',
+    })
+
+    expect(result.items[0]).toMatchObject({
       sku: '—',
       productName: 'Produk tidak ditemukan',
+      unitLabel: '',
       decimalScale: 0,
     })
   })
 
-  it('turns a missing session into a readable message', async () => {
-    const { client } = queryClient({
-      data: null,
-      error: { message: 'OPNAME_NOT_FOUND: Sesi opname tidak ditemukan.' },
+  it('returns an empty page when the RPC omits the items array', async () => {
+    const { client } = rpcClient({ data: { total: 0 }, error: null })
+
+    const result = await getOpnameItemsPage(client, 'o-1', {
+      page: 1,
+      pageSize: 50,
+      filter: 'all',
+      search: '',
     })
 
-    await expect(getOpnameDetail(client, 'missing')).rejects.toThrow('Sesi opname tidak ditemukan.')
+    expect(result.items).toEqual([])
+    expect(result.total).toBe(0)
+  })
+
+  it('translates an unknown filter', async () => {
+    const { client } = rpcClient({
+      data: null,
+      error: { message: 'INVALID_FILTER: Filter item tidak dikenal.' },
+    })
+
+    await expect(getOpnameItemsPage(client, 'o-1', {
+      page: 1,
+      pageSize: 50,
+      filter: 'all',
+      search: '',
+    })).rejects.toThrow('Filter item tidak dikenal.')
+  })
+})
+
+describe('getOpnameItemContext', () => {
+  const context = {
+    item_id: 'i-1',
+    opname_id: 'o-1',
+    opname_status: 'counting',
+    product_id: 'p-1',
+    sku: 'SKU-1',
+    product_name: 'Beras',
+    is_active: true,
+    unit_label: 'Kg',
+    decimal_scale: 2,
+    system_qty_snapshot: 13,
+    stock_version_snapshot: 2,
+    current_qty: 12,
+    current_version: 3,
+    physical_qty: 11,
+    reason_code: 'missing',
+    reason_note: null,
+    count_status: 'needs_recount',
+    counted_at: '2026-11-04T10:00:00Z',
+  }
+
+  it('keeps the stale snapshot separate from current stock', async () => {
+    const { client, rpc } = rpcClient({ data: context, error: null })
+
+    const result = await getOpnameItemContext(client, 'i-1')
+
+    expect(rpc).toHaveBeenCalledWith('get_stock_opname_item_context', { p_item_id: 'i-1' })
+    expect(result).toMatchObject({
+      systemQtySnapshot: 13,
+      stockVersionSnapshot: 2,
+      currentQty: 12,
+      currentVersion: 3,
+      countStatus: 'needs_recount',
+    })
+    // The two quantities are distinct facts, not one overwritten value.
+    expect(result.systemQtySnapshot).not.toBe(result.currentQty)
+  })
+
+  it('translates a missing item', async () => {
+    const { client } = rpcClient({
+      data: null,
+      error: { message: 'OPNAME_ITEM_NOT_FOUND: Item opname tidak ditemukan.' },
+    })
+
+    await expect(getOpnameItemContext(client, 'missing'))
+      .rejects.toThrow('Item opname tidak ditemukan.')
   })
 })

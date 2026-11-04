@@ -2223,6 +2223,279 @@ async function runOpnameTests() {
     assert(Number(logs.rows[0].revision) === 1, 'discrepancy revision is wrong')
   })
 
+  // ===== GROUP F2 — PHASE 5E READS =====
+  // The full 1,361-item pagination walk needs the BULK catalog created by H1,
+  // so it lives at H2 instead of here.
+
+  await test('F4 — pagination filters and searches the whole session server-side', async () => {
+    const first = await opnameProduct('OPN-F5A', { stock: 10 })
+    const second = await opnameProduct('OPN-F5B', { stock: 20 })
+    const session = await createOpname({ product_ids: [first, second] })
+    const itemA = await opnameItem(session.opname_id, first)
+    const itemB = await opnameItem(session.opname_id, second)
+    await countItem(itemA.id, 8, 'missing', null)
+
+    const pending = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 50, 0, 'pending', null],
+    )
+    assert(Number(pending.total) === 1, `pending filter returned ${pending.total}`)
+    assert(pending.items[0].id === itemB.id, 'pending filter returned the wrong item')
+
+    const difference = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 50, 0, 'difference', null],
+    )
+    assert(Number(difference.total) === 1, `difference filter returned ${difference.total}`)
+    assert(difference.items[0].id === itemA.id, 'difference filter returned the wrong item')
+    assert(Number(difference.items[0].difference_qty) === -2, 'difference value is wrong')
+
+    const search = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 50, 0, 'all', 'F5B'],
+    )
+    assert(Number(search.total) === 1, `search returned ${search.total}`)
+    assert(search.items[0].product_id === second, 'search returned the wrong product')
+
+    await expectRpcError(
+      '22023',
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5)',
+      [session.opname_id, 50, 0, 'bogus', null],
+    )
+    await expectRpcError(
+      '42501',
+      'authenticated',
+      CASHIER,
+      'select public.get_stock_opname_summary($1)',
+      [session.opname_id],
+    )
+    await expectRpcError(
+      '42501',
+      'anon',
+      null,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5)',
+      [session.opname_id, 50, 0, 'all', null],
+    )
+  })
+
+  await test('F5 — summary counters aggregate every item, not the visible page', async () => {
+    const matching = await opnameProduct('OPN-F6A', { stock: 5 })
+    const differing = await opnameProduct('OPN-F6B', { stock: 9 })
+    const unknown = await opnameProduct('OPN-F6C', { stock: null })
+    const pendingProduct = await opnameProduct('OPN-F6D', { stock: 3 })
+    const session = await createOpname({ product_ids: [matching, differing, unknown, pendingProduct] })
+
+    await countItem((await opnameItem(session.opname_id, matching)).id, 5, null, null)
+    await countItem((await opnameItem(session.opname_id, differing)).id, 7, 'missing', null)
+    await countItem(
+      (await opnameItem(session.opname_id, unknown)).id,
+      4,
+      'opening_balance',
+      'Hitung awal',
+    )
+
+    const summary = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_summary($1) as r',
+      [session.opname_id],
+    )
+    assert(Number(summary.item_count) === 4, `item_count ${summary.item_count}`)
+    assert(Number(summary.pending_count) === 1, `pending_count ${summary.pending_count}`)
+    assert(Number(summary.counted_count) === 3, `counted_count ${summary.counted_count}`)
+    assert(Number(summary.needs_recount_count) === 0, `recount_count ${summary.needs_recount_count}`)
+    assert(Number(summary.opening_balance_count) === 1, `opening_balance_count ${summary.opening_balance_count}`)
+    assert(Number(summary.matching_count) === 1, `matching_count ${summary.matching_count}`)
+    assert(Number(summary.discrepancy_count) === 1, `discrepancy_count ${summary.discrepancy_count}`)
+    assert(Number(summary.blocker_count) === 1, `blocker_count ${summary.blocker_count}`)
+    assert(summary.ready_for_submit === false, 'a pending item did not block submission')
+
+    // The page only holds one row; the summary must still describe all four.
+    const page = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 1, 0, 'all', null],
+    )
+    assert(page.items.length === 1, 'page size was not honoured')
+    assert(Number(page.total) === 4, 'page total disagrees with the session')
+    assert(Number(summary.item_count) > page.items.length, 'summary was derived from the page')
+
+    await countItem((await opnameItem(session.opname_id, pendingProduct)).id, 3, null, null)
+    const complete = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_summary($1) as r',
+      [session.opname_id],
+    )
+    assert(Number(complete.blocker_count) === 0, 'completed session still reports blockers')
+    assert(complete.ready_for_submit === true, 'completed session is not ready for submit')
+  })
+
+  await test('F6 — item context separates the stale snapshot from current stock', async () => {
+    const productId = await opnameProduct('OPN-F7', { stock: 30 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 25, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+
+    // A cashier sells five units after the snapshot was taken.
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 5, 25000)),
+      ])
+    })
+
+    const conflict = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(conflict.result === 'version_conflict', 'conflict was not detected')
+
+    const summary = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_summary($1) as r',
+      [session.opname_id],
+    )
+    assert(Number(summary.needs_recount_count) === 1, 'summary did not count the recount item')
+    assert(Number(summary.blocker_count) === 1, 'a needs_recount item did not block submission')
+    assert(summary.ready_for_submit === false, 'a needs_recount session reported ready')
+
+    const context = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_item_context($1) as r',
+      [item.id],
+    )
+    assert(Number(context.system_qty_snapshot) === 30, 'context lost the session snapshot')
+    assert(Number(context.stock_version_snapshot) === 0, 'context lost the snapshot version')
+    assert(Number(context.current_qty) === 25, 'context did not read current stock')
+    assert(Number(context.current_version) === 1, 'context did not read the current version')
+    assert(context.count_status === 'needs_recount', 'context lost the recount marker')
+
+    // The RPC response, not the form, must carry the rebased snapshot.
+    const rebased = await countItem(item.id, 24, 'missing', null)
+    assert(Number(rebased.system_qty_snapshot) === 25, 'recount did not return the rebased snapshot')
+    assert(Number(rebased.difference_qty) === -1, 'recount used the stale snapshot')
+
+    const after = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_item_context($1) as r',
+      [item.id],
+    )
+    assert(Number(after.system_qty_snapshot) === 25, 'stored snapshot was not rebased')
+    assert(after.count_status === 'counted', 'recount did not clear the marker')
+  })
+
+  await test('F7 — an unknown product balance stays NULL through pagination and summary', async () => {
+    const productId = await opnameProduct('OPN-F8', { stock: null })
+    const session = await createOpname({ product_ids: [productId] })
+    const page = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 50, 0, 'all', null],
+    )
+    assert(page.items.length === 1, 'unknown-balance item missing from the page')
+    assert(page.items[0].system_qty_snapshot === null, 'NULL balance became a number')
+    assert(page.items[0].difference_qty === null, 'NULL balance produced a difference')
+
+    const summary = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_summary($1) as r',
+      [session.opname_id],
+    )
+    assert(Number(summary.opening_balance_count) === 1, 'opening balance was not counted')
+    assert(Number(summary.discrepancy_count) === 0, 'NULL balance was counted as a discrepancy')
+    assert(Number(summary.blocker_count) === 1, 'an uncounted opening item is not a blocker')
+  })
+
+  await test('F8 — a sale during recount is absorbed by the server-side rebase', async () => {
+    const productId = await opnameProduct('OPN-F9', { stock: 30 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 25, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+
+    // First sale after the snapshot: 30 -> 25, version 1. Posting conflicts.
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 5, 25000)),
+      ])
+    })
+    const conflict = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(conflict.result === 'version_conflict', 'conflict was not detected')
+
+    // The operator opens the recount dialog and the UI reads current stock.
+    const context = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_item_context($1) as r',
+      [item.id],
+    )
+    assert(Number(context.current_qty) === 25, 'context did not show the post-sale stock')
+    assert(Number(context.current_version) === 1, 'context did not show the post-sale version')
+
+    // A second cashier sells three more units while the dialog is still open.
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 3, 15000)),
+      ])
+    })
+
+    // The count must rebase against 22/2 inside its own transaction, not the
+    // 25/1 the operator saw, otherwise the ledger would drift by three units.
+    const rebased = await countItem(item.id, 21, 'missing', null)
+    assert(Number(rebased.system_qty_snapshot) === 22, 'recount used the quantity the UI had fetched')
+    assert(Number(rebased.difference_qty) === -1, 'recount difference used a stale system quantity')
+
+    const stored = await db.query(
+      'select system_qty_snapshot, stock_version_snapshot from public.stock_opname_items where id = $1',
+      [item.id],
+    )
+    assert(Number(stored.rows[0].system_qty_snapshot) === 22, 'stored snapshot is stale')
+    assert(Number(stored.rows[0].stock_version_snapshot) === 2, 'stored version is stale')
+
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const posted = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(posted.result === 'posted', `recount post failed: ${posted.result}`)
+    assert(Number(posted.delta_total) === -1, 'posted delta absorbed the concurrent sales')
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 21, 'stock after the mid-recount sale is wrong')
+    assert(Number(state.stock_version) === 3, 'version after the mid-recount sale is wrong')
+
+    const movements = await db.query(
+      'select movement_type, quantity_delta, quantity_before, quantity_after from public.stock_movements where product_id = $1 order by id',
+      [productId],
+    )
+    assert(movements.rows.length === 3, `expected two sales and an adjustment, got ${movements.rows.length}`)
+    const adjustment = movements.rows.find((row) => row.movement_type === 'opname_adjustment')
+    assert(adjustment, 'opname_adjustment missing')
+    assert(Number(adjustment.quantity_before) === 22, 'ledger before ignored the mid-recount sale')
+    assert(Number(adjustment.quantity_after) === 21, 'ledger after is wrong')
+
+    const sum = movements.rows.reduce((total, row) => total + Number(row.quantity_delta), 0)
+    assert(30 + sum === 21, `ledger drift: start 30 + ${sum}`)
+  })
+
   // ===== GROUP G — IMMUTABILITY =====
 
   await test('G1 — posted sessions, items, movements and logs are immutable', async () => {
@@ -2335,7 +2608,101 @@ async function runOpnameTests() {
     console.log(`      bulk snapshot: ${session.item_count} items in ${elapsed} ms`)
   })
 
-  await test('H2 — submit and approve replays are idempotent', async () => {
+  await test('H2 — pagination walks all 1,361 items without gaps or duplicates', async () => {
+    const before = await db.query('select count(*)::int as n from public.products')
+    const expectedTotal = before.rows[0].n
+    assert(expectedTotal >= 1361, `expected at least 1361 products, got ${expectedTotal}`)
+
+    const created = await createOpname({ scope_note: 'Uji paginasi 5E' })
+    assert(created.item_count === expectedTotal, 'snapshot did not cover the whole catalog')
+
+    const pageSize = 250
+    const pages = []
+    let offset = 0
+    const started = Date.now()
+    while (offset < expectedTotal) {
+      const page = await rpcAs(
+        'authenticated',
+        OWNER,
+        'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+        [created.opname_id, pageSize, offset, 'all', null],
+      )
+      assert(Number(page.total) === expectedTotal, `page total ${page.total} != ${expectedTotal}`)
+      assert(Number(page.limit) === pageSize, 'limit was not honoured')
+      assert(Number(page.offset) === offset, 'offset was not echoed back')
+      assert(page.items.length <= pageSize, 'page returned more rows than requested')
+      pages.push(page)
+      offset += pageSize
+    }
+    const elapsed = Date.now() - started
+    const seen = pages.flatMap((page) => page.items.map((item) => item.id))
+
+    assert(seen.length === expectedTotal, `walked ${seen.length} of ${expectedTotal} items`)
+    assert(new Set(seen).size === expectedTotal, 'pagination returned duplicate items')
+    assert(pages.length === Math.ceil(expectedTotal / pageSize), 'unexpected page count')
+    console.log(`      pagination walk: ${seen.length} items in ${elapsed} ms`)
+
+    // The walk must match the database's own deterministic order exactly.
+    const ordered = await db.query(
+      `select i.id
+         from public.stock_opname_items i
+         join public.products p on p.id = i.product_id
+        where i.stock_opname_id = $1
+        order by p.sku asc, i.id asc`,
+      [created.opname_id],
+    )
+    assert(
+      ordered.rows.every((row, index) => row.id === seen[index]),
+      'pagination order diverged from sku ASC, id ASC',
+    )
+
+    // First, middle and last page must each be fully populated.
+    const first = pages[0]
+    const middle = pages[Math.floor(pages.length / 2)]
+    const last = pages[pages.length - 1]
+    assert(first.items.length === pageSize, 'first page is short')
+    assert(middle.items.length === pageSize, 'middle page is short')
+    assert(last.items.length === expectedTotal - (pages.length - 1) * pageSize, 'last page is short')
+
+    // An over-large limit is clamped instead of fetching the whole session.
+    const clamped = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [created.opname_id, 100000, 0, 'all', null],
+    )
+    assert(Number(clamped.limit) === 250, 'limit was not clamped to 250')
+    assert(clamped.items.length === 250, 'clamped page did not return 250 rows')
+  })
+
+  await test('H3 — summary stays exact on a 1,361-item session', async () => {
+    const session = await createOpname({ scope_note: 'Uji ringkasan 5E' })
+    const firstPage = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.list_stock_opname_items($1,$2,$3,$4,$5) as r',
+      [session.opname_id, 50, 0, 'all', null],
+    )
+    const started = Date.now()
+    const summary = await rpcAs(
+      'authenticated',
+      OWNER,
+      'select public.get_stock_opname_summary($1) as r',
+      [session.opname_id],
+    )
+    const elapsed = Date.now() - started
+
+    assert(Number(summary.item_count) === Number(firstPage.total), 'summary and page disagree on the total')
+    assert(Number(summary.pending_count) === Number(summary.item_count), 'fresh session is not fully pending')
+    assert(Number(summary.counted_count) === 0, 'fresh session already has counts')
+    assert(Number(summary.needs_recount_count) === 0, 'fresh session already needs recounts')
+    assert(Number(summary.blocker_count) === Number(summary.item_count), 'pending items did not block')
+    assert(summary.ready_for_submit === false, 'an uncounted session is ready to submit')
+    assert(elapsed < 5000, `summary too slow: ${elapsed} ms`)
+    console.log(`      summary over ${summary.item_count} items in ${elapsed} ms`)
+  })
+
+  await test('H4 — submit and approve replays are idempotent', async () => {
     const productId = await opnameProduct('OPN-H2', { stock: 4 })
     const session = await createOpname({ product_ids: [productId] })
     const item = await opnameItem(session.opname_id, productId)
@@ -2620,7 +2987,7 @@ async function runSecurityTests() {
     assert(counterPolicies.rows[0].n === 0, 'document_counters must stay RPC-only')
   })
 
-  await test('I4 — public RPCs are SECURITY DEFINER with an empty search_path', async () => {
+  await test('I4 — public RPCs pin search_path; only documented reads are INVOKER', async () => {
     const result = await db.query(
       `select p.oid::regprocedure::text as signature, p.prosecdef, p.proconfig
          from pg_proc p
@@ -2628,8 +2995,24 @@ async function runSecurityTests() {
         where n.nspname = 'public'`,
     )
     assert(result.rows.length >= 18, `only ${result.rows.length} public functions found`)
+
+    // Phase 5E added read-only RPCs that MUST stay SECURITY INVOKER so the
+    // caller's RLS still applies; making them DEFINER would bypass the item
+    // policies. Every other public function keeps the DEFINER contract. The
+    // allowlist is explicit so a new INVOKER function cannot slip in unnoticed.
+    const invokerAllowed = new Set([
+      'get_stock_opname_summary(uuid)',
+      'list_stock_opname_items(uuid,integer,integer,text,text)',
+      'get_stock_opname_item_context(uuid)',
+    ])
+
     for (const row of result.rows) {
-      assert(row.prosecdef === true, `${row.signature} is not SECURITY DEFINER`)
+      const short = row.signature.replace(/^public\./, '').replace(/ /g, '')
+      if (invokerAllowed.has(short)) {
+        assert(row.prosecdef === false, `${row.signature} must stay SECURITY INVOKER`)
+      } else {
+        assert(row.prosecdef === true, `${row.signature} is not SECURITY DEFINER`)
+      }
       assert(
         Array.isArray(row.proconfig) && row.proconfig.includes('search_path=""'),
         `${row.signature} does not pin search_path`,

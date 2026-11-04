@@ -1,10 +1,12 @@
-import { computed, onMounted, ref, shallowRef, toValue, watch } from 'vue'
+import { computed, onMounted, onScopeDispose, ref, shallowRef, toValue, watch } from 'vue'
 import type { MaybeRefOrGetter } from 'vue'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from '~/types/database'
 import type {
   OpnameConflict,
   OpnameDetail,
+  OpnameItemContext,
+  OpnameItemFilter,
   OpnameItemRow,
   PostOpnameResult,
 } from '~/types/opname'
@@ -12,11 +14,14 @@ import {
   approveOpname,
   cancelOpname,
   getOpnameDetail,
+  getOpnameItemContext,
+  getOpnameItemsPage,
   postOpname,
   recordOpnameCount,
   submitOpname,
 } from '~/services/opname'
 import { describeOpnameError } from '~/types/opname'
+import { clampPage, createDebouncer, pageCount } from '~/utils/catalog'
 
 export interface UseOpnameDetailOptions {
   client: SupabaseClient<Database>
@@ -24,10 +29,35 @@ export interface UseOpnameDetailOptions {
   opnameId: MaybeRefOrGetter<string>
 }
 
+const SEARCH_DEBOUNCE_MS = 200
+const DEFAULT_PAGE_SIZE = 50
+
+/**
+ * Session detail state.
+ *
+ * Two independent sources feed the page, on purpose:
+ *  * `detail` — header + global counters, aggregated in the database over every
+ *    item. A page of rows can never answer "how many are still pending".
+ *  * `items` — exactly one page, fetched with limit/offset and a deterministic
+ *    SKU order. This is what fixed the PostgREST 1,000-row truncation.
+ *
+ * Filtering and searching are server-side for the same reason: filtering the
+ * loaded page would hide matches on the other 1,300 items.
+ */
 export function useOpnameDetail(options: UseOpnameDetailOptions) {
   const detail = shallowRef<OpnameDetail | null>(null)
+  const items = shallowRef<OpnameItemRow[]>([])
+  const total = shallowRef(0)
+  const page = shallowRef(1)
+  const pageSize = shallowRef(DEFAULT_PAGE_SIZE)
+  const filter = shallowRef<OpnameItemFilter>('all')
+  const searchInput = shallowRef('')
+  const appliedSearch = shallowRef('')
+
   const loading = ref(false)
+  const itemsLoading = ref(false)
   const error = ref<string | null>(null)
+  const itemsError = ref<string | null>(null)
   const actionError = ref<string | null>(null)
   const actionNotice = ref<string | null>(null)
   const busyAction = ref<'count' | 'submit' | 'approve' | 'post' | 'cancel' | null>(null)
@@ -37,37 +67,125 @@ export function useOpnameDetail(options: UseOpnameDetailOptions) {
   /** Summary from the last successful post, for the result banner. */
   const postResult = shallowRef<PostOpnameResult | null>(null)
 
-  const items = computed(() => detail.value?.items ?? [])
-  const pendingItems = computed(() =>
-    items.value.filter((item) => item.countStatus === 'pending'),
+  let detailRequest = 0
+  let itemsRequest = 0
+
+  const totalPages = computed(() => pageCount(total.value, pageSize.value))
+  const canGoPrevious = computed(() => page.value > 1)
+  const canGoNext = computed(() => page.value < totalPages.value)
+  const rangeStart = computed(() =>
+    total.value === 0 ? 0 : (page.value - 1) * pageSize.value + 1,
   )
-  const recountItems = computed(() =>
-    items.value.filter((item) => item.countStatus === 'needs_recount'),
-  )
-  const countedItems = computed(() =>
-    items.value.filter((item) => item.countStatus !== 'pending'),
-  )
-  const discrepancyItems = computed(() =>
-    items.value.filter((item) => (item.differenceQty ?? 0) !== 0),
-  )
-  const openingBalanceItems = computed(() =>
-    items.value.filter((item) => item.systemQtySnapshot === null),
-  )
-  const isComplete = computed(
-    () => items.value.length > 0 && pendingItems.value.length === 0,
+  const rangeEnd = computed(() => Math.min(page.value * pageSize.value, total.value))
+  const hasFilters = computed(
+    () => filter.value !== 'all' || appliedSearch.value.trim() !== '',
   )
 
-  async function load(): Promise<void> {
+  // Global counters. These come from the summary RPC, never from `items`.
+  const pendingCount = computed(() => detail.value?.pendingCount ?? 0)
+  const recountCount = computed(() => detail.value?.needsRecountCount ?? 0)
+  const discrepancyCount = computed(() => detail.value?.discrepancyCount ?? 0)
+  const openingBalanceCount = computed(() => detail.value?.openingBalanceCount ?? 0)
+  const matchingCount = computed(() => detail.value?.matchingCount ?? 0)
+  const isComplete = computed(
+    () => (detail.value?.itemCount ?? 0) > 0 && pendingCount.value === 0,
+  )
+
+  const debouncer = createDebouncer<string>(SEARCH_DEBOUNCE_MS, (value) => {
+    appliedSearch.value = value
+    page.value = 1
+  })
+
+  watch(searchInput, (value) => {
+    debouncer.schedule(value)
+  })
+
+  // Filter/search/page changes only re-fetch the page, not the summary.
+  watch(
+    [appliedSearch, filter, page, pageSize],
+    () => {
+      void loadItems()
+    },
+    { flush: 'post' },
+  )
+
+  async function loadDetail(): Promise<void> {
+    const currentRequest = ++detailRequest
     loading.value = true
     error.value = null
     try {
-      detail.value = await getOpnameDetail(options.client, toValue(options.opnameId))
+      const result = await getOpnameDetail(options.client, toValue(options.opnameId))
+      if (currentRequest !== detailRequest) return
+      detail.value = result
     } catch (cause) {
+      if (currentRequest !== detailRequest) return
       error.value = cause instanceof Error ? cause.message : 'Gagal memuat sesi opname.'
       detail.value = null
     } finally {
-      loading.value = false
+      if (currentRequest === detailRequest) loading.value = false
     }
+  }
+
+  async function loadItems(): Promise<void> {
+    if (!detail.value) return
+    const currentRequest = ++itemsRequest
+    itemsLoading.value = true
+    itemsError.value = null
+
+    try {
+      const result = await getOpnameItemsPage(options.client, toValue(options.opnameId), {
+        page: page.value,
+        pageSize: pageSize.value,
+        filter: filter.value,
+        search: appliedSearch.value,
+      })
+      if (currentRequest !== itemsRequest) return
+
+      items.value = result.items
+      total.value = result.total
+
+      // A delete or a filter change can leave us past the last page.
+      const lastPage = pageCount(result.total, pageSize.value)
+      if (page.value > lastPage) page.value = lastPage
+    } catch (cause) {
+      if (currentRequest !== itemsRequest) return
+      itemsError.value =
+        cause instanceof Error ? cause.message : 'Gagal memuat item opname.'
+      items.value = []
+      total.value = 0
+    } finally {
+      if (currentRequest === itemsRequest) itemsLoading.value = false
+    }
+  }
+
+  /** Header + counters + the page the operator is looking at. */
+  async function load(): Promise<void> {
+    await loadDetail()
+    if (detail.value) await loadItems()
+  }
+
+  function setPage(nextPage: number): void {
+    page.value = clampPage(nextPage, total.value, pageSize.value)
+  }
+
+  function setPageSize(nextSize: number): void {
+    if (nextSize === pageSize.value) return
+    pageSize.value = nextSize
+    page.value = 1
+  }
+
+  function setFilter(nextFilter: OpnameItemFilter): void {
+    if (nextFilter === filter.value) return
+    filter.value = nextFilter
+    page.value = 1
+  }
+
+  function resetFilters(): void {
+    debouncer.cancel()
+    searchInput.value = ''
+    appliedSearch.value = ''
+    filter.value = 'all'
+    page.value = 1
   }
 
   function clearFeedback(): void {
@@ -75,6 +193,25 @@ export function useOpnameDetail(options: UseOpnameDetailOptions) {
     actionNotice.value = null
   }
 
+  /**
+   * Authoritative item state for the count dialog: snapshot, live stock and
+   * live version in one read. The dialog must never present the snapshot as
+   * current stock after a version conflict.
+   */
+  async function fetchItemContext(itemId: string): Promise<OpnameItemContext | null> {
+    try {
+      return await getOpnameItemContext(options.client, itemId)
+    } catch (cause) {
+      actionError.value = describeOpnameError(cause)
+      return null
+    }
+  }
+
+  /**
+   * Save a physical count. The RPC response is authoritative — after a recount
+   * it carries the rebased snapshot the database actually used — so the row in
+   * the page is patched from it instead of from the form.
+   */
   async function count(
     item: OpnameItemRow,
     physicalQty: number,
@@ -84,9 +221,35 @@ export function useOpnameDetail(options: UseOpnameDetailOptions) {
     clearFeedback()
     busyAction.value = 'count'
     try {
-      await recordOpnameCount(options.client, item.id, physicalQty, reasonCode, reasonNote)
-      await load()
-      actionNotice.value = `Jumlah fisik ${item.sku} tersimpan.`
+      const result = await recordOpnameCount(
+        options.client,
+        item.id,
+        physicalQty,
+        reasonCode,
+        reasonNote,
+      )
+
+      items.value = items.value.map((row) =>
+        row.id === result.itemId
+          ? {
+              ...row,
+              systemQtySnapshot: result.systemQtySnapshot,
+              physicalQty: result.physicalQty,
+              differenceQty: result.differenceQty,
+              reasonCode: result.reasonCode,
+              countStatus: result.countStatus,
+              countedAt: result.countedAt,
+            }
+          : row,
+      )
+
+      // Counters describe the whole session, so they must be re-aggregated.
+      await loadDetail()
+
+      const rebased = result.systemQtySnapshot !== item.systemQtySnapshot
+      actionNotice.value = rebased
+        ? `Hitungan ${item.sku} tersimpan. Stok sistem disesuaikan ke ${result.systemQtySnapshot ?? 'NULL'} sesuai kondisi terbaru.`
+        : `Jumlah fisik ${item.sku} tersimpan.`
       return true
     } catch (cause) {
       actionError.value = describeOpnameError(cause)
@@ -186,6 +349,9 @@ export function useOpnameDetail(options: UseOpnameDetailOptions) {
       clearFeedback()
       conflicts.value = []
       postResult.value = null
+      page.value = 1
+      items.value = []
+      total.value = 0
       void load()
     },
   )
@@ -194,23 +360,45 @@ export function useOpnameDetail(options: UseOpnameDetailOptions) {
     void load()
   })
 
+  onScopeDispose(() => {
+    debouncer.cancel()
+  })
+
   return {
     detail,
     items,
-    pendingItems,
-    recountItems,
-    countedItems,
-    discrepancyItems,
-    openingBalanceItems,
-    isComplete,
+    total,
+    page,
+    pageSize,
+    filter,
+    searchInput,
     loading,
+    itemsLoading,
     error,
+    itemsError,
     actionError,
     actionNotice,
     busyAction,
     conflicts,
     postResult,
+    totalPages,
+    canGoPrevious,
+    canGoNext,
+    rangeStart,
+    rangeEnd,
+    hasFilters,
+    pendingCount,
+    recountCount,
+    discrepancyCount,
+    openingBalanceCount,
+    matchingCount,
+    isComplete,
     load,
+    setPage,
+    setPageSize,
+    setFilter,
+    resetFilters,
+    fetchItemContext,
     count,
     submit,
     approve,

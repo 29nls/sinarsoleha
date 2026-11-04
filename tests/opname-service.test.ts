@@ -4,6 +4,8 @@ import {
   cancelOpname,
   createOpname,
   getOpnameDetail,
+  getOpnameItemContext,
+  getOpnameItemsPage,
   listOpnames,
   postOpname,
   recordOpnameCount,
@@ -134,6 +136,140 @@ describe('recordOpnameCount', () => {
     const result = await recordOpnameCount(client, 'i-2', 5, 'opening_balance', 'Awal')
     expect(result.systemQtySnapshot).toBeNull()
     expect(result.differenceQty).toBeNull()
+  })
+})
+
+describe('opname reads', () => {
+  it('loads the summary RPC for the session header', async () => {
+    const { client, rpc } = rpcClient({
+      data: {
+        opname_id: 'o-1',
+        opname_no: 'OPN-1',
+        status: 'counting',
+        item_count: 1361,
+        pending_count: 0,
+        counted_count: 1361,
+        needs_recount_count: 0,
+        posted_count: 0,
+        opening_balance_count: 0,
+        matching_count: 1361,
+        discrepancy_count: 0,
+        blocker_count: 0,
+        ready_for_submit: true,
+      },
+      error: null,
+    })
+
+    const detail = await getOpnameDetail(client, 'o-1')
+
+    expect(rpc).toHaveBeenCalledWith('get_stock_opname_summary', { p_opname_id: 'o-1' })
+    expect(detail.readyForSubmit).toBe(true)
+    expect(detail.itemCount).toBe(1361)
+  })
+
+  it('requests a single deterministic page of items', async () => {
+    const { client, rpc } = rpcClient({
+      data: { total: 1361, items: [] },
+      error: null,
+    })
+
+    const result = await getOpnameItemsPage(client, 'o-1', {
+      page: 2,
+      pageSize: 50,
+      filter: 'recount',
+      search: 'SKU',
+    })
+
+    expect(rpc).toHaveBeenCalledWith('list_stock_opname_items', {
+      p_opname_id: 'o-1',
+      p_limit: 50,
+      p_offset: 50,
+      p_filter: 'recount',
+      p_search: 'SKU',
+    })
+    expect(result.total).toBe(1361)
+  })
+
+  it('reads live product state for the recount dialog', async () => {
+    const { client, rpc } = rpcClient({
+      data: {
+        item_id: 'i-1',
+        opname_id: 'o-1',
+        product_id: 'p-1',
+        sku: 'SKU-1',
+        system_qty_snapshot: 30,
+        stock_version_snapshot: 0,
+        current_qty: 25,
+        current_version: 1,
+        count_status: 'needs_recount',
+      },
+      error: null,
+    })
+
+    const context = await getOpnameItemContext(client, 'i-1')
+
+    expect(rpc).toHaveBeenCalledWith('get_stock_opname_item_context', { p_item_id: 'i-1' })
+    expect(context).toMatchObject({
+      systemQtySnapshot: 30,
+      stockVersionSnapshot: 0,
+      currentQty: 25,
+      currentVersion: 1,
+      countStatus: 'needs_recount',
+    })
+  })
+
+  it('surfaces a readable error when the item context is gone', async () => {
+    const { client } = rpcClient({
+      data: null,
+      error: { message: 'PRODUCT_NOT_FOUND: Produk item opname tidak ditemukan.' },
+    })
+
+    await expect(getOpnameItemContext(client, 'i-1'))
+      .rejects.toThrow('Produk item opname tidak ditemukan.')
+  })
+})
+
+describe('recordOpnameCount after a version conflict', () => {
+  it('returns the rebased snapshot the database actually used', async () => {
+    const { client, rpc } = rpcClient({
+      data: {
+        item_id: 'i-1',
+        opname_id: 'o-1',
+        product_id: 'p-1',
+        // Rebased from the stale 30 to the current 25 inside the transaction.
+        system_qty_snapshot: 25,
+        physical_qty: 24,
+        difference_qty: -1,
+        reason_code: 'missing',
+        count_status: 'counted',
+        counted_by: 'u-1',
+        counted_at: '2026-11-04T11:00:00Z',
+      },
+      error: null,
+    })
+
+    const result = await recordOpnameCount(client, 'i-1', 24, 'missing', null)
+
+    expect(rpc).toHaveBeenCalledWith('record_stock_opname_count', {
+      p_stock_opname_item_id: 'i-1',
+      p_physical_qty: 24,
+      p_reason_code: 'missing',
+      p_reason_note: '',
+    })
+    // The UI must store this number, not the snapshot it held before the call.
+    expect(result.systemQtySnapshot).toBe(25)
+    expect(result.differenceQty).toBe(-1)
+    expect(result.countStatus).toBe('counted')
+  })
+
+  it('keeps the database reason guard visible when the reason is missing', async () => {
+    const { client } = rpcClient({
+      data: null,
+      error: { message: 'REASON_REQUIRED: Selisih stok wajib memiliki reason_code.' },
+    })
+
+    await expect(recordOpnameCount(client, 'i-1', 24, null, null))
+      .rejects.toThrow('Selisih stok wajib memiliki alasan.')
   })
 })
 

@@ -6,8 +6,8 @@ keamanannya. Semua perubahan stok terjadi di PostgreSQL; klien tidak pernah
 menulis `products.stock_on_hand`.
 
 - Migrasi: `supabase/migrations/20261104100000_stock_opname_engine.sql`
-- Tes: `scripts/db-test.mjs` (grup A–H), `npm run test:db`
-- Status: **lokal lulus 94/94; terpasang di preview (20/20 migrasi); divalidasi hosted + E2E browser pada Phase 5D**
+- Tes: `scripts/db-test.mjs` (grup A–J), `npm run test:db`
+- Status: **lokal lulus 101/101; mesin 5A/5D terpasang di preview (20/20 migrasi); tiga RPC baca Phase 5E belum diterapkan**
 
 ## 1. Prinsip arsitektur
 
@@ -232,7 +232,7 @@ tetap wajib punya `submitted_at`.
 
 ## 10. Hasil tes lokal
 
-`npm run test:db` — **94/94 lulus** (42 tes Phase 1–4 + 52 tes Phase 5A/5D):
+`npm run test:db` — **101/101 lulus** (42 tes Phase 1–4 + 59 tes Phase 5A–5E):
 
 | Grup | Tes |
 | --- | --- |
@@ -241,17 +241,24 @@ tetap wajib punya `submitted_at`.
 | C — count | qty negatif, presisi, alasan wajib, `other` wajib catatan, opening balance wajib alasan+catatan, qty 0, aktor tercatat, recount |
 | D — approval | submit tidak lengkap, `needs_recount`, approval tanpa mengubah stok |
 | E — posting | kenaikan, penurunan, no-change, opening positif, opening nol, delta 0 ditolak untuk tipe lain, idempotensi + satu audit |
-| F — konflik | dua sesi (opname + penjualan), penanda konflik tersimpan, tidak ada posting sebagian, dan recount yang me-rebase snapshot lalu berhasil diposting tanpa drift |
+| F — konflik | dua sesi (opname + penjualan), penanda konflik tersimpan, tidak ada posting sebagian, recount yang me-rebase snapshot lalu berhasil diposting tanpa drift, dan penjualan kedua saat dialog recount terbuka |
+| F2 — baca 5E | paginasi + filter/pencarian server-side, ringkasan global, konteks snapshot vs stok kini, saldo `NULL` utuh |
 | G — immutability | sesi posted/cancelled final, movement & log tidak dapat diubah/dihapus, update stok langsung ditolak |
-| H — skala & replay | snapshot 1.406 produk dalam satu statement (168 ms), replay submit/approve idempoten tanpa duplikasi audit |
+| H — skala & replay | snapshot 1.417 produk dalam satu statement (117–190 ms), jalan paginasi penuh 1.417 item (151–261 ms pada tiga run), ringkasan 3–4 ms, replay submit/approve idempoten tanpa duplikasi audit |
+| I — hak akses | anon tanpa privilege, RLS di semua tabel, `search_path` terkunci, hanya tiga RPC baca 5E yang `SECURITY INVOKER` |
+| J — adjustment | otorisasi, ledger + audit, validasi qty/alasan, idempotensi |
 
-Perintah lain: `npm test` 257/257, `npm run typecheck` exit 0, `npm run build` exit 0.
+Perintah lain: `npm test` 275/275, `npm run typecheck` exit 0, `npm run build` exit 0.
 
 Validasi hosted Phase 5D (preview): 24/24 tes API dan 17/17 skenario browser —
-lihat `docs/19-inventory-hosted-validation.md`. Catatan yang muncul dari fase itu:
-pembacaan detail opname masih dibatasi 1.000 baris oleh PostgREST, sehingga sesi
-seluruh katalog hanya menampilkan sebagian item di UI meski snapshot database
-lengkap.
+lihat `docs/19-inventory-hosted-validation.md`.
+
+Phase 5E menambahkan tiga RPC baca (`get_stock_opname_summary`,
+`list_stock_opname_items`, `get_stock_opname_item_context`) yang menutup batas
+1.000 baris PostgREST dan snapshot recount yang basi. Ketiganya `SECURITY
+INVOKER` dengan `search_path = ''`, otorisasi lewat `private.has_role`, dan
+`EXECUTE` hanya untuk `authenticated`. Migrasinya **belum diterapkan** ke
+preview; angka di paragraf sebelumnya adalah perilaku 5D.
 
 Tes memakai produk sintetis `OPN-*` dan fixture `TEST-TXN-*`; **tidak ada**
 stok 1.360 produk impor yang diubah dan tidak ada saldo awal nyata yang

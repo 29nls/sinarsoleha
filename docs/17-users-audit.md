@@ -109,5 +109,32 @@ langsung dengan sesi non-owner.
 - Tidak ada filter pelaku, pencarian teks bebas, atau ekspor seluruh hasil.
 - Audit log tidak menampilkan `before_data` di CSV (hanya `after_data`) agar
   satu baris tetap satu record; snapshot sebelum tetap ada di detail layar.
-- Migrasi Phase 5A **sudah diterapkan** ke preview `ptbllrugrjepdhdhhdkzxn`
+- Migrasi Phase 5A **sudah diterapkan** ke preview `ptbllrugrjepdhhdkzxn`
   (4 November 2026); produksi tidak disentuh.
+
+## Menambah staf inventaris kedua (Phase 5E)
+
+Phase 5D hanya memakai satu akun `inventory_staff`
+(`a3333333-3333-4333-8333-333333333333`). Rencana awal mensyaratkan dua akun
+agar dua orang bisa menghitung rak berbeda dan menguji konflik versi secara
+nyata. Per 4 November 2026 akun `INVENTORY_STAFF_B` **belum ada**: dari lima
+profil, hanya satu yang berperan `inventory_staff`.
+
+Aplikasi tidak punya dan tidak akan punya jalur pembuatan akun sendiri —
+sign-up publik dimatikan di `supabase/config.toml`, dan peran tidak pernah
+dibaca dari `user_metadata`. Akun harus dibuat owner di Supabase Auth Dashboard:
+
+1. Buka **Authentication → Users → Add user** pada project preview.
+2. Isi email staf dan kata sandi awal yang kuat; **jangan** aktifkan
+   "Auto Confirm User" bila email belum diverifikasi, dan jangan bagikan
+   kredensial lewat dokumen ini.
+3. Simpan. Trigger `private.handle_new_user` membuat baris `profiles` dengan
+   peran default `cashier` dan `is_active = true`.
+4. Login sekali sebagai staf tersebut, lalu sebagai owner buka `/users` dan
+   ubah perannya menjadi `inventory_staff`.
+5. Verifikasi: `profiles.role = 'inventory_staff'`, `is_active = true`, dan akun
+   bisa membuka `/stock-opname` tetapi tetap ditolak di `/users`.
+
+Yang tidak boleh dilakukan: menaikkan peran lewat `user_metadata` atau
+`raw_user_meta_data`, memakai akun bersama, atau menyalakan sign-up publik
+sebagai jalan pintas.

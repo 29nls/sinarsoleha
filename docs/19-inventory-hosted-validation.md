@@ -141,27 +141,30 @@ ada movement, log selisih, atau audit yang dihapus — ledger tetap append-only.
 
 ## 7. Temuan yang belum diperbaiki
 
-1. **Pembacaan detail terpotong 1.000 baris.** `getOpnameDetail` mengambil semua
-   item dalam satu query tanpa paginasi. PostgREST membatasi 1.000 baris, jadi
-   sesi seluruh katalog (1.361 item) hanya menampilkan 1.000 item di UI,
-   sementara hitungan `pending`/`selisih` ikut salah. Snapshot di database tetap
-   lengkap. Perbaikan yang disarankan: paginasi/virtualisasi item atau endpoint
-   ringkasan terpisah.
-2. **Snapshot basi di dialog recount.** Setelah konflik, halaman detail masih
-   menampilkan `system_qty_snapshot` lama (mis. 13 padahal sistem sudah 12),
-   sehingga dialog meminta alasan untuk selisih yang akan dibuang server saat
-   rebase. Fungsional dan aman, tetapi membingungkan operator. Opsi perbaikan:
-   rebase juga di cabang konflik `post_stock_opname`, atau kirim ulang snapshot
-   terbaru pada respons konflik.
+> **Status per Phase 5E (4 November 2026):** butir 1, 2, dan 5 sudah ditangani
+> di kode dan diuji lokal. Tiga migrasi baru (0021–0023) **belum diterapkan ke
+> preview**, jadi perilaku hosted di bawah ini masih yang berlaku sampai migrasi
+> dijalankan. Butir 3 dan 4 tetap terbuka.
+
+1. ~~**Pembacaan detail terpotong 1.000 baris.**~~ **Diperbaiki di 5E.** Detail
+   tidak lagi memuat item; header dan counter berasal dari
+   `get_stock_opname_summary`, tabel memakai `list_stock_opname_items` dengan
+   `limit`/`offset` dan urutan `sku ASC, id ASC`. Lihat `docs/12` §5.
+2. ~~**Snapshot basi di dialog recount.**~~ **Diperbaiki di 5E.** Dialog memuat
+   `get_stock_opname_item_context` dan menampilkan snapshot, stok sistem saat
+   ini, dan hitungan baru sebagai tiga angka terpisah; rebase tetap di
+   `record_stock_opname_count`.
 3. **Pemeriksaan kelengkapan di `approve` tidak terjangkau lewat API.** `submit`
    sudah menjamin nol blocker, dan item tidak dapat diubah saat `submitted`.
    Pemeriksaan itu murni defensif; tidak dapat diuji tanpa memanipulasi tabel.
 4. **Akun `INVENTORY_STAFF_B` belum ada.** Spesifikasi 5D meminta dua akun staf.
    Skenario yang dijalankan hanya butuh satu; independensi sesi dibuktikan
-   dengan dua klien owner untuk posting paralel.
-5. **Fixture uji menumpuk di preview.** Setiap run membuat SKU baru (mis.
-   `TEST-OPN-A-<stamp>`) dan menonaktifkannya. Sebelum produksi, fixture ini
-   perlu dibersihkan bersama 5 `HOST-*` dan 4 `TEST-REALTIME-*`.
+   dengan dua klien owner untuk posting paralel. Instruksi pembuatan ada di
+   `docs/17-users-audit.md`.
+5. ~~**Fixture uji menumpuk di preview.**~~ **Diinventarisasi di 5E.** Audit
+   read-only atas 48 produk: A=0, B=13, C=3, D=32; tidak ada kandidat hapus
+   fisik. Rencana pengarsipan dan dry-run ada di
+   `docs/20-preview-fixture-inventory.md`, menunggu approval owner.
 
 ## 8. Batasan yang jujur
 

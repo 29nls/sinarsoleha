@@ -8,10 +8,10 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | --- | --- | --- |
 | 0 | Audit dokumen, database, arsitektur | Selesai — lihat `docs/00-phase-0-audit.md` |
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
-| 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
+| 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 migrasi tersinkron di preview (0021–0023 Phase 5E belum); produksi belum diterapkan |
 | 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1.361/1.361 baris impor masuk** |
 | 4 | Mesin transaksi (4A), UI kasir (4B), riwayat/void (4C), validasi hosted & E2E (4D) | **4A–4D selesai (preview); checkout aktif; produksi belum diterapkan** |
-| 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C), validasi hosted (5D) | **5A–5D selesai & diuji hosted; 20/20 migrasi di preview** |
+| 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C), validasi hosted (5D), keandalan inventaris (5E) | **5A–5D selesai & diuji hosted; 5E selesai lokal, migrasi 0021–0023 belum diterapkan** |
 | 6 | Laporan penjualan, per produk, exception data, ekspor CSV | **Selesai & diuji lokal** |
 | 7 | Plugin opsional: printer, scanner, gateway QRIS, halaman pengaturan | **Selesai & diuji lokal** |
 | 8 | Keamanan & UAT | **Audit selesai; UAT hosted siap dijalankan di preview** — lihat `docs/16-security-uat.md` |
@@ -36,6 +36,8 @@ Phase 5B menambah UI opname di `/stock-opname`: daftar sesi dengan filter status
 Phase 5C menambah halaman inventaris baca-saja di `/inventory`: saldo stok per produk dengan filter saldo belum diketahui/negatif/kosong, histori pergerakan stok (`/inventory/movements`) dengan filter jenis dan rentang tanggal, serta laporan selisih opname (`/inventory/discrepancies`) dengan filter alasan. Ketiganya memakai `capability: inventory.read`, tidak menambah RPC atau migrasi, dan menampilkan saldo `NULL` sebagai “—” (bukan nol). Rincian ada di `docs/13-inventory-ui.md`.
 
 Phase 5D memvalidasi mesin dan UI inventaris pada project preview: suite hosted 24/24 (saldo awal positif dan nol, no-change/naik/turun, penegakan alasan, konflik versi, posting paralel dua klien owner, Broadcast Realtime, snapshot 1.361 item dalam 113 ms) dan E2E browser 17/17 dengan tiga konteks terpisah. Audit menemukan cacat nyata: setelah konflik versi, snapshot tidak pernah di-refresh sehingga sesi tidak akan pernah bisa diposting ulang. Migrasi `20261106130000` memperbaikinya dengan me-rebase snapshot saat recount. 1.361 produk impor tetap berstok `NULL` dan tidak menerima satu movement pun — lihat `docs/19-inventory-hosted-validation.md`.
+
+Phase 5E menutup tiga temuan 5D. Detail opname tidak lagi dimuat sekaligus: header dan delapan counter global berasal dari RPC agregat `get_stock_opname_summary`, sedangkan tabel memakai `list_stock_opname_items` dengan `limit`/`offset` dan urutan deterministik `sku ASC, id ASC`, sehingga sesi 1.361 item utuh dan filter/pencarian berlaku untuk seluruh sesi. Dialog hitung ulang membaca `get_stock_opname_item_context` untuk menampilkan snapshot, stok sistem saat ini, dan hitungan baru sebagai tiga angka terpisah; `record_stock_opname_count` tetap satu-satunya yang me-rebase di dalam transaksinya. Audit read-only 48 produk uji menemukan **A=0, B=13, C=3, D=32** — tidak ada kandidat hapus fisik, seluruh rekomendasi berupa pengarsipan. Hasil lokal: 101/101 tes DB, 275/275 unit, typecheck dan build lulus. Tiga migrasi baru (0021–0023) **belum diterapkan ke preview**, dan cleanup fixture menunggu approval owner — lihat `docs/20-preview-fixture-inventory.md`.
 
 Phase 7 menambahkan tiga integrasi opsional di balik satu kontrak adapter: printer thermal (fallback dialog browser), barcode scanner keyboard-wedge, dan gateway QRIS yang secara jujur dilaporkan tidak tersedia pada build SPA ini. Halaman `/settings` (owner-only) mengatur flag dan `public_config` non-rahasia lewat RPC yang sudah ada; tidak ada migrasi baru. Semua plugin default nonaktif dan checkout, pencarian manual, serta QRIS manual tetap berjalan tanpa perangkat apa pun — lihat `docs/15-plugins-settings.md`.
 
@@ -74,6 +76,7 @@ Tanpa kredensial Supabase, aplikasi tetap berjalan tetapi halaman login menampil
 | `npm run test:hosted:inventory` | Uji opname Phase 5D di preview (fixture `TEST-OPN-*`, konkurensi, Realtime) |
 | `npm run test:e2e:inventory` | E2E browser stok opname (owner, staf, kasir dalam konteks terpisah) |
 | `npm run gen:types` | Regenerasi `types/database.generated.ts` dari schema |
+| `node scripts/fixture-audit.mjs` | Audit read-only produk uji preview; `--json` untuk laporan |
 | `npm run import:products` | Dry-run impor master produk; `--apply` hanya setelah persetujuan owner |
 
 ## Struktur
@@ -116,4 +119,6 @@ types/          tipe database hasil generate
 - `docs/16-security-uat.md` — audit keamanan, model ancaman, matriks peran, checklist UAT (Phase 8)
 - `docs/17-users-audit.md` — halaman pengguna, audit log, filter stok rendah, ekspor CSV (Phase 9)
 - `docs/18-realtime-stock.md` — Broadcast stok private, version guard, reconnect, tes grup H (Phase 10)
+- `docs/19-inventory-hosted-validation.md` — validasi hosted & E2E inventaris Phase 5D
+- `docs/20-preview-fixture-inventory.md` — inventaris read-only 48 produk uji, klasifikasi A–D, rencana pengarsipan Phase 5E
 - `docs/PROGRESS.md` — log pengembangan (termasuk Phase 11 `adjust_stock`)

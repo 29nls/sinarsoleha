@@ -199,6 +199,33 @@ export interface OpnameItemRow {
   countedAt: string | null
 }
 
+/** Server-side item filters. Counts always describe the whole session. */
+export const OPNAME_ITEM_FILTERS = ['all', 'pending', 'recount', 'difference'] as const
+
+export type OpnameItemFilter = (typeof OPNAME_ITEM_FILTERS)[number]
+
+export const OPNAME_PAGE_SIZES = [50, 100, 250] as const
+
+export interface OpnameItemPageParams {
+  page: number
+  pageSize: number
+  filter: OpnameItemFilter
+  search: string
+}
+
+export interface OpnameItemPageResult {
+  items: OpnameItemRow[]
+  /** Rows matching the active filter/search, across the whole session. */
+  total: number
+  page: number
+  pageSize: number
+}
+
+/**
+ * Session header plus global counters, aggregated by the database across every
+ * item. Never derive these from a page: a page cannot answer "how many are
+ * still pending".
+ */
 export interface OpnameDetail {
   id: string
   opnameNo: string
@@ -210,7 +237,56 @@ export interface OpnameDetail {
   postedAt: string | null
   cancelledAt: string | null
   cancelledReason: string | null
-  items: OpnameItemRow[]
+  itemCount: number
+  pendingCount: number
+  countedCount: number
+  needsRecountCount: number
+  postedCount: number
+  openingBalanceCount: number
+  matchingCount: number
+  discrepancyCount: number
+  blockerCount: number
+  readyForSubmit: boolean
+}
+
+/**
+ * One item as it stands in the session versus as the product stands right now.
+ * The two quantities are deliberately separate: after a version conflict the
+ * snapshot is history, not current stock.
+ */
+export interface OpnameItemContext {
+  itemId: string
+  opnameId: string
+  opnameStatus: string
+  productId: string
+  sku: string
+  productName: string
+  isActive: boolean
+  unitLabel: string
+  decimalScale: number
+  systemQtySnapshot: number | null
+  stockVersionSnapshot: number
+  currentQty: number | null
+  currentVersion: number
+  physicalQty: number | null
+  reasonCode: string | null
+  reasonNote: string | null
+  countStatus: string
+  countedAt: string | null
+}
+
+/**
+ * The quantity the RPC will compare the new count against.
+ *
+ * A `needs_recount` item is rebased to current product stock inside
+ * `record_stock_opname_count`; every other item keeps its creation snapshot.
+ * The form must validate against the same number the database will use.
+ */
+export function effectiveSystemQty(
+  context: Pick<OpnameItemContext, 'countStatus' | 'systemQtySnapshot' | 'currentQty'> | null,
+): number | null {
+  if (!context) return null
+  return context.countStatus === 'needs_recount' ? context.currentQty : context.systemQtySnapshot
 }
 
 // ---------------------------------------------------------------------------
@@ -329,6 +405,8 @@ const ERROR_MESSAGES: Array<[string, string]> = [
   ['CATEGORY_NOT_FOUND', 'Kategori tidak ditemukan.'],
   ['CANCEL_REASON_REQUIRED', 'Alasan pembatalan wajib diisi.'],
   ['INVALID_IDEMPOTENCY_KEY', 'Kunci idempotensi tidak valid.'],
+  ['INVALID_FILTER', 'Filter item tidak dikenal.'],
+  ['PRODUCT_NOT_FOUND', 'Produk item opname tidak ditemukan.'],
 ]
 
 /**

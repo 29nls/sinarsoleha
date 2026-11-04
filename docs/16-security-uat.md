@@ -4,7 +4,7 @@ Phase 8 menutup proyek dengan dua hal yang bisa dikerjakan tanpa menyentuh
 database hosted: **audit keamanan yang dapat diulang** dan **checklist UAT**
 untuk owner, kasir, dan staf gudang. Tidak ada migrasi baru pada fase ini —
 migrasi Phase 5A dan Broadcast Realtime sudah diterapkan ke preview
-`ptbllrugrjepdhdhhdkzxn` (4 November 2026), dan produksi tidak disentuh sama
+`ptbllrugrjepdhhdkzxn` (4 November 2026), dan produksi tidak disentuh sama
 sekali.
 
 ## 1. Cara menjalankan ulang audit
@@ -59,6 +59,7 @@ Pencarian di `app/` tidak menemukan:
 | RLS | aktif di 24/24 tabel | idem |
 | `document_counters` | tanpa policy (RPC-only) | tanpa policy (RPC-only) |
 | Fungsi `public.*` (17) | tidak ada EXECUTE | EXECUTE semua; semuanya `SECURITY DEFINER` + `search_path=""` |
+| RPC baca opname Phase 5E (3) | tidak ada EXECUTE | EXECUTE; `SECURITY INVOKER` + `search_path=""`, otorisasi `private.has_role` |
 | `private.require_active_role`, `bootstrap_owner`, `write_audit`, `next_document_number`, wrapper RPC | tidak ada EXECUTE | tidak ada EXECUTE (hanya `has_role` yang di-grant) |
 | Fungsi `private` lain (trigger/helper) | tidak ada EXECUTE (dicabut 0018) | tidak ada EXECUTE (dicabut 0018) |
 | Schema `private` | tanpa USAGE | USAGE (dibutuhkan helper internal) |

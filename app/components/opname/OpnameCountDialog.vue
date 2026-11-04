@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { OpnameItemRow } from '~/types/opname'
+import type { OpnameItemContext, OpnameItemRow } from '~/types/opname'
 import {
   allowedReasons,
+  effectiveSystemQty,
   opnameReasonLabel,
   reasonRequirement,
   validateCount,
@@ -12,6 +13,12 @@ import { formatQuantity } from '~/utils/format'
 const props = defineProps<{
   open: boolean
   item: OpnameItemRow | null
+  /**
+   * Snapshot versus live product state, read when the dialog opens. Null while
+   * the read is in flight or after it failed.
+   */
+  context: OpnameItemContext | null
+  contextLoading: boolean
   saving: boolean
   error: string | null
 }>()
@@ -27,11 +34,30 @@ const reasonCode = ref('')
 const reasonNote = ref('')
 const formError = ref<string | null>(null)
 
-const requirement = computed(() =>
-  reasonRequirement(props.item?.systemQtySnapshot ?? null, parseQty(physicalQty.value)),
+/** The item was flagged after a version conflict and will be rebased. */
+const isRecount = computed(
+  () => (props.context?.countStatus ?? props.item?.countStatus) === 'needs_recount',
 )
 
-const reasonOptions = computed(() => allowedReasons(props.item?.systemQtySnapshot ?? null))
+/**
+ * The quantity the RPC will compare against. For a `needs_recount` item the
+ * database rebases to current product stock, so validating against the stale
+ * snapshot would demand the wrong reason (or none at all).
+ */
+const systemQty = computed(() => effectiveSystemQty(props.context))
+
+/** Shown only when the two numbers differ; otherwise it would be noise. */
+const snapshotDiffers = computed(() => {
+  const context = props.context
+  if (!context) return false
+  return context.systemQtySnapshot !== context.currentQty
+})
+
+const requirement = computed(() =>
+  reasonRequirement(systemQty.value, parseQty(physicalQty.value)),
+)
+
+const reasonOptions = computed(() => allowedReasons(systemQty.value))
 
 const noteRequired = computed(
   () => requirement.value === 'opening_balance' || reasonCode.value === 'other',
@@ -41,6 +67,9 @@ const noteRequired = computed(
 const showReasonField = computed(
   () => requirement.value === 'opening_balance' || requirement.value === 'difference',
 )
+
+const unitLabel = computed(() => props.context?.unitLabel ?? props.item?.unitLabel ?? '')
+const decimalScale = computed(() => props.context?.decimalScale ?? props.item?.decimalScale ?? 0)
 
 watch(
   () => props.open,
@@ -65,10 +94,19 @@ watch(
   },
 )
 
+// The context arrives after the dialog opens. Only the reason preselection is
+// corrected here; the physical quantity the operator already typed is kept.
 watch(
-  () => props.item?.systemQtySnapshot,
-  (systemQty) => {
-    if (systemQty === null) {
+  () => props.context,
+  (context) => {
+    if (!context) return
+    if (context.countStatus === 'needs_recount') {
+      reasonCode.value = context.reasonCode ?? ''
+      reasonNote.value = context.reasonNote ?? ''
+      formError.value = null
+      return
+    }
+    if (context.systemQtySnapshot === null) {
       reasonCode.value = 'opening_balance'
     } else if (reasonCode.value === 'opening_balance') {
       reasonCode.value = ''
@@ -87,12 +125,17 @@ function submit() {
   const item = props.item
   if (!item) return
 
+  if (!props.context) {
+    formError.value = 'Stok terkini belum termuat. Tunggu sebentar lalu coba lagi.'
+    return
+  }
+
   const message = validateCount({
-    systemQty: item.systemQtySnapshot,
+    systemQty: systemQty.value,
     physicalQty: physicalQty.value,
     reasonCode: reasonCode.value,
     reasonNote: reasonNote.value,
-    decimalScale: item.decimalScale,
+    decimalScale: decimalScale.value,
   })
 
   if (message) {
@@ -134,25 +177,66 @@ function close() {
         <button class="btn" type="button" :disabled="saving" @click="close">Tutup</button>
       </div>
 
-      <dl v-if="item" class="grid grid-cols-2 gap-x-4 gap-y-1 border-y border-[var(--color-line)] py-2 text-[12px]">
+      <div v-if="isRecount" class="notice notice-warn" role="status">
+        <strong>Item ini perlu dihitung ulang.</strong>
+        Stok berubah setelah opname dibuat. Angka sistem di bawah sudah diambil ulang dari
+        database; hitungan Anda akan dibandingkan dengan stok terkini, bukan dengan snapshot lama.
+      </div>
+
+      <div v-if="contextLoading" class="text-[12px] text-[var(--color-muted)]" role="status">
+        Mengambil stok terkini…
+      </div>
+
+      <dl
+        v-else-if="context"
+        class="grid grid-cols-2 gap-x-4 gap-y-2 border-y border-[var(--color-line)] py-2 text-[12px]"
+      >
+        <div v-if="isRecount || snapshotDiffers">
+          <dt class="text-[var(--color-muted)]">Snapshot opname</dt>
+          <dd class="num">
+            <template v-if="context.systemQtySnapshot === null">
+              <span class="tag tag-warn">NULL</span>
+            </template>
+            <template v-else>
+              {{ formatQuantity(context.systemQtySnapshot) }} {{ unitLabel }}
+            </template>
+            <span class="block text-[11px] text-[var(--color-muted)]">
+              versi {{ context.stockVersionSnapshot }} · dicatat saat sesi dibuat
+            </span>
+          </dd>
+        </div>
         <div>
-          <dt class="text-[var(--color-muted)]">Stok sistem</dt>
+          <dt class="text-[var(--color-muted)]">
+            {{ isRecount ? 'Stok sistem saat ini' : 'Stok sistem' }}
+          </dt>
           <dd class="num font-medium">
-            <template v-if="item.systemQtySnapshot === null">
+            <template v-if="context.currentQty === null">
               <span class="tag tag-warn">Belum diketahui</span>
             </template>
             <template v-else>
-              {{ formatQuantity(item.systemQtySnapshot) }} {{ item.unitLabel }}
+              {{ formatQuantity(context.currentQty) }} {{ unitLabel }}
             </template>
+            <span class="block text-[11px] text-[var(--color-muted)]">
+              versi {{ context.currentVersion }} · dibaca saat dialog dibuka
+            </span>
           </dd>
         </div>
         <div>
           <dt class="text-[var(--color-muted)]">Satuan</dt>
-          <dd>{{ item.unitLabel || '—' }}</dd>
+          <dd>{{ unitLabel || '—' }}</dd>
+        </div>
+        <div>
+          <dt class="text-[var(--color-muted)]">Dibandingkan dengan</dt>
+          <dd class="num font-medium">
+            <template v-if="systemQty === null">
+              <span class="tag tag-warn">Belum diketahui</span>
+            </template>
+            <template v-else>{{ formatQuantity(systemQty) }} {{ unitLabel }}</template>
+          </dd>
         </div>
       </dl>
 
-      <p v-if="item && item.systemQtySnapshot === null" class="notice notice-warn">
+      <p v-if="context && systemQty === null" class="notice notice-warn">
         Stok sistem produk ini belum pernah diketahui. Jumlah yang Anda masukkan akan dicatat
         sebagai <strong>saldo awal</strong>, bukan selisih.
       </p>
@@ -166,11 +250,11 @@ function close() {
           type="text"
           inputmode="decimal"
           autocomplete="off"
-          :disabled="saving"
-          :aria-describedby="item?.decimalScale ? 'physical-qty-hint' : undefined"
+          :disabled="saving || contextLoading"
+          :aria-describedby="decimalScale > 0 ? 'physical-qty-hint' : undefined"
         >
-        <p v-if="item && item.decimalScale > 0" id="physical-qty-hint" class="mt-1 text-[11px] text-[var(--color-muted)]">
-          Boleh {{ item.decimalScale }} angka desimal.
+        <p v-if="decimalScale > 0" id="physical-qty-hint" class="mt-1 text-[11px] text-[var(--color-muted)]">
+          Boleh {{ decimalScale }} angka desimal.
         </p>
       </div>
 
@@ -204,7 +288,7 @@ function close() {
 
       <div class="flex justify-end gap-2 border-t border-[var(--color-line)] pt-3">
         <button class="btn" type="button" :disabled="saving" @click="close">Batal</button>
-        <button class="btn btn-primary" type="submit" :disabled="saving">
+        <button class="btn btn-primary" type="submit" :disabled="saving || contextLoading || !context">
           {{ saving ? 'Menyimpan…' : 'Simpan hitungan' }}
         </button>
       </div>

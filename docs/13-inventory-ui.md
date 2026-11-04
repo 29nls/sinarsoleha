@@ -112,3 +112,7 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
   `/inventory`, histori memuat baris "Saldo awal", dan laporan selisih hanya
   menampilkan penyesuaian nyata (saldo awal tidak dianggap selisih). Rincian di
   `docs/19-inventory-hosted-validation.md`.
+- Phase 5E tidak mengubah halaman inventaris baca-saja ini. Yang berubah adalah
+  halaman detail opname (`docs/12` §5): item dipaginasi dan ringkasannya
+  diagregasi di database. Setelah sesi diposting, ketiga halaman ini tetap
+  menampilkan hasilnya dengan cara yang sama.

@@ -1,7 +1,7 @@
 # Implementasi Database
 
-**Status: seluruh 19 migrasi (Phase 2–5A + Realtime + Phase 11 + Phase 12) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; produksi belum menerima migrasi apa pun.**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. Phase 11 menambah migrasi ke-17 (`20261106100000_stock_adjustment.sql`), diterapkan 4 November 2026 dan diuji hosted 8/8. Migrasi ke-18 (`20261106110000_private_function_grants.sql`) mencabut EXECUTE `PUBLIC` bawaan pada seluruh fungsi `private`, diterapkan 4 November 2026, dan diverifikasi dengan 10 probe peran. Migrasi ke-19 (`20261106120000_import_review_resolution.sql`) menambah RPC owner-only `resolve_product_import_review` untuk menyelesaikan baris impor berstatus `review`, diterapkan 4 November 2026 dan dipakai untuk mengimpor baris `WAL-W1303`. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: seluruh 20 migrasi (Phase 2–5A + Realtime + Phase 11 + Phase 12 + rebase recount 5D) sudah diterapkan ke preview `ptbllrugrjepdhhdkzxn`; tiga migrasi Phase 5E (0021–0023) belum diterapkan; produksi belum menerima migrasi apa pun.**
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. Phase 11 menambah migrasi ke-17 (`20261106100000_stock_adjustment.sql`), diterapkan 4 November 2026 dan diuji hosted 8/8. Migrasi ke-18 (`20261106110000_private_function_grants.sql`) mencabut EXECUTE `PUBLIC` bawaan pada seluruh fungsi `private`, diterapkan 4 November 2026, dan diverifikasi dengan 10 probe peran. Migrasi ke-19 (`20261106120000_import_review_resolution.sql`) menambah RPC owner-only `resolve_product_import_review` untuk menyelesaikan baris impor berstatus `review`, diterapkan 4 November 2026 dan dipakai untuk mengimpor baris `WAL-W1303`. Migrasi ke-20 (`20261106130000_opname_recount_rebase.sql`) memperbaiki loop recount Phase 5D dengan me-rebase snapshot di dalam transaksi hitung; juga diterapkan 4 November 2026. Tiga migrasi Phase 5E (`20261106140000`–`20261106140200`) sudah ditulis dan diuji lokal tetapi **belum diterapkan** ke preview. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -25,6 +25,12 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261104100000_stock_opname_engine.sql` | Phase 5A: 6 RPC opname, `creation_key`, constraint delta nol untuk opening balance, constraint cancel sesi counting |
 | `20261105100000_stock_broadcast.sql` | Phase 10: trigger `products_broadcast_stock`, `private.broadcast_product_stock()`, policy baca topik privat `store:stock` di `realtime.messages` |
 | `20261106100000_stock_adjustment.sql` | Phase 11: `private.adjust_stock` + wrapper `public.adjust_stock` (koreksi manual, alasan & catatan wajib, presisi satuan, idempotensi, audit `stock.adjust`) — diterapkan ke preview 4 November 2026 |
+| `20261106110000_private_function_grants.sql` | Phase 12: cabut EXECUTE `PUBLIC` bawaan pada seluruh fungsi schema `private` |
+| `20261106120000_import_review_resolution.sql` | Phase 12: RPC owner-only `resolve_product_import_review` |
+| `20261106130000_opname_recount_rebase.sql` | Phase 5D: `record_stock_opname_count` me-rebase `system_qty_snapshot`/`stock_version_snapshot` saat item `needs_recount` |
+| `20261106140000_opname_detail_summary.sql` | Phase 5E (0021): `get_stock_opname_summary` — 8 counter global + `blocker_count` + `ready_for_submit` |
+| `20261106140100_opname_item_pagination.sql` | Phase 5E (0022): `list_stock_opname_items` — limit/offset, urutan `sku ASC, id ASC`, filter & pencarian server-side |
+| `20261106140200_opname_item_context.sql` | Phase 5E (0023): `get_stock_opname_item_context` — snapshot vs stok/versi terkini |
 
 ### Bukti schema hosted
 
@@ -172,7 +178,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 
 ## 6. Apply ke Hosted
 
-Preview **sudah sinkron 19/19 migrasi**, termasuk hardening grant `private` yang diverifikasi dengan 10 probe peran dan RPC resolusi review impor. **Produksi belum menerima migrasi apa pun.** Untuk produksi gunakan project terpisah dan backup:
+Preview **sudah sinkron 20/20 migrasi**, termasuk hardening grant `private`, RPC resolusi review impor, dan rebase snapshot recount. Tiga migrasi Phase 5E (`20261106140000`–`20261106140200`) **belum diterapkan** dan masih menunggu approval. **Produksi belum menerima migrasi apa pun.** Untuk produksi gunakan project terpisah dan backup:
 
 ```bash
 npx supabase link --project-ref <production-ref>
@@ -196,6 +202,8 @@ Jangan menjalankan `db push` ke produksi tanpa persetujuan owner.
 | `20261106100000_stock_adjustment.sql` (11) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026; probe hosted 8/8 |
 | `20261106110000_private_function_grants.sql` (12) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026; probe peran 10/10 |
 | `20261106120000_import_review_resolution.sql` (12) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026; dipakai mengimpor baris 1305 |
+| `20261106130000_opname_recount_rebase.sql` (5D) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026; memperbaiki loop recount setelah konflik versi |
+| `20261106140000`–`20261106140200` (5E) | **belum diterapkan** | summary, paginasi item, dan konteks recount; diuji lokal, menunggu approval |
 
 `migration repair` hanya mencatat versi di `supabase_migrations.schema_migrations`; tidak menjalankan SQL. Sebelum repair 3B/4A, keberadaan objek dipastikan lewat probe REST: tabel `product_import_runs`/`product_import_rows` ada, RPC `begin_product_import`/`complete_sale`/`void_sale` membalas 401 (ada & terlindungi), sedangkan `stock_opnames.creation_key` membalas 400 `42703` (belum ada) — penanda 5A memang belum diterapkan.
 
@@ -211,6 +219,6 @@ Migrasi kategori Phase 3A tercatat sebagai versi `20261102091100`; produksi teta
 - **Sign-up hosted masih aktif**; wajib dimatikan sebelum produksi.
 - **Akun dan data uji** masih ada di preview; hapus/reset sebelum produksi.
 - `public.rls_auto_enable()` adalah fungsi event trigger platform yang dilaporkan advisor; bukan bagian migrasi ini. Tinjau sebelum produksi.
-- Fungsi `private` masih mewarisi EXECUTE dari `PUBLIC`; schema `private` tidak diekspos PostgREST, tetapi hardening grant dapat menjadi migrasi lanjutan.
+- EXECUTE `PUBLIC` bawaan pada fungsi `private` sudah dicabut oleh `20261106110000_private_function_grants.sql` dan diverifikasi 10 probe peran; `private.has_role(text[])` tetap satu-satunya helper yang dapat dipanggil `authenticated`.
 - `types/database.generated.ts` dihasilkan dari schema lokal; generation hosted (`gen types --linked`) sudah dibandingkan dan identik pada tingkat tabel/kolom.
 - PGlite bukan Supabase; perbedaan perilaku PostgREST/GoTrue/Realtime tetap harus diuji pada project hosted (sudah dilakukan untuk Auth/RLS/RPC, bukan Realtime).

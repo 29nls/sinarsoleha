@@ -12,10 +12,6 @@ const props = defineProps<{
   detail: OpnameDetail
   canApprove: boolean
   busy: 'count' | 'submit' | 'approve' | 'post' | 'cancel' | null
-  pendingCount: number
-  recountCount: number
-  discrepancyCount: number
-  openingBalanceCount: number
   error: string | null
   notice: string | null
 }>()
@@ -36,17 +32,26 @@ const status = computed(() => props.detail.status)
 const editable = computed(() => isOpnameEditable(status.value))
 const cancellable = computed(() => isOpnameCancellable(status.value))
 
+/** Counters are global, aggregated by the database over every session item. */
+const pendingCount = computed(() => props.detail.pendingCount)
+const recountCount = computed(() => props.detail.needsRecountCount)
+const discrepancyCount = computed(() => props.detail.discrepancyCount)
+const openingBalanceCount = computed(() => props.detail.openingBalanceCount)
+
 const canSubmit = computed(
-  () => editable.value && props.pendingCount === 0 && props.recountCount === 0,
+  () => editable.value && props.detail.readyForSubmit,
 )
 
 const submitHint = computed(() => {
   if (!editable.value) return null
-  if (props.pendingCount > 0) {
-    return `${props.pendingCount} item belum dihitung.`
+  if (pendingCount.value > 0) {
+    return `${pendingCount.value} item belum dihitung.`
   }
-  if (props.recountCount > 0) {
-    return `${props.recountCount} item perlu dihitung ulang.`
+  if (recountCount.value > 0) {
+    return `${recountCount.value} item perlu dihitung ulang.`
+  }
+  if (props.detail.blockerCount > 0) {
+    return `${props.detail.blockerCount} item belum lengkap (alasan atau catatan wajib).`
   }
   return null
 })
@@ -136,7 +141,15 @@ function statusClass(value: string): string {
         <span v-if="detail.cancelledReason" class="block">{{ detail.cancelledReason }}</span>
       </div>
 
-      <dl class="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-[var(--color-line)] pt-2 text-[12px] sm:grid-cols-4">
+      <dl class="grid grid-cols-2 gap-x-4 gap-y-1 border-t border-[var(--color-line)] pt-2 text-[12px]">
+        <div>
+          <dt class="text-[var(--color-muted)]">Total produk</dt>
+          <dd class="num font-medium">{{ detail.itemCount }}</dd>
+        </div>
+        <div>
+          <dt class="text-[var(--color-muted)]">Sudah dihitung</dt>
+          <dd class="num font-medium">{{ detail.countedCount }}</dd>
+        </div>
         <div>
           <dt class="text-[var(--color-muted)]">Belum dihitung</dt>
           <dd class="num font-medium">{{ pendingCount }}</dd>
@@ -148,6 +161,10 @@ function statusClass(value: string): string {
           </dd>
         </div>
         <div>
+          <dt class="text-[var(--color-muted)]">Cocok sistem</dt>
+          <dd class="num font-medium">{{ detail.matchingCount }}</dd>
+        </div>
+        <div>
           <dt class="text-[var(--color-muted)]">Selisih</dt>
           <dd class="num font-medium">{{ discrepancyCount }}</dd>
         </div>
@@ -155,7 +172,21 @@ function statusClass(value: string): string {
           <dt class="text-[var(--color-muted)]">Saldo awal</dt>
           <dd class="num font-medium">{{ openingBalanceCount }}</dd>
         </div>
+        <div>
+          <dt class="text-[var(--color-muted)]">Terposting</dt>
+          <dd class="num font-medium">{{ detail.postedCount }}</dd>
+        </div>
       </dl>
+
+      <p
+        v-if="detail.itemCount > 0"
+        class="text-[11px]"
+        :class="detail.readyForSubmit ? 'text-[#0b5a4f]' : 'text-[var(--color-muted)]'"
+      >
+        {{ detail.readyForSubmit
+          ? 'Semua item lengkap dan siap disubmit.'
+          : `${detail.blockerCount} item masih menjadi penghalang submit.` }}
+      </p>
 
       <div v-if="error" class="notice notice-error" role="alert">{{ error }}</div>
       <div v-if="notice" class="notice" role="status">{{ notice }}</div>
@@ -201,7 +232,7 @@ function statusClass(value: string): string {
             </button>
             <div v-else class="w-full space-y-2 border border-[var(--color-line)] bg-[#fdf8ec] p-2.5">
               <p class="text-[12px]">
-                Posting akan mengubah stok <strong>{{ detail.items.length }} produk</strong>
+                Posting akan mengubah stok <strong>{{ detail.itemCount }} produk</strong>
                 secara permanen dan tidak dapat dibatalkan. Lanjutkan?
               </p>
               <div class="flex gap-2">

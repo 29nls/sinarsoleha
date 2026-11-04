@@ -9,6 +9,8 @@ const props = defineProps<{
   error: string | null
   editable: boolean
   highlightedIds: string[]
+  /** Differs from the unfiltered wording so an empty filter is not read as an empty session. */
+  emptyMessage?: string
 }>()
 
 const emit = defineEmits<{
@@ -44,7 +46,11 @@ function differenceLabel(item: OpnameItemRow): string {
 
 <template>
   <div class="overflow-x-auto">
-    <table class="table-dense min-w-[860px]" :aria-busy="loading">
+    <table
+      class="table-dense min-w-[860px] transition-opacity"
+      :class="loading && items.length > 0 ? 'opacity-60' : ''"
+      :aria-busy="loading"
+    >
       <caption class="sr-only">Item opname dan jumlah fisik</caption>
       <thead>
         <tr>
@@ -59,17 +65,17 @@ function differenceLabel(item: OpnameItemRow): string {
         </tr>
       </thead>
       <tbody>
-        <tr v-if="loading">
-          <td colspan="8" class="py-8 text-center" role="status">Memuat item…</td>
-        </tr>
-        <tr v-else-if="error">
+        <tr v-if="error">
           <td colspan="8" class="py-8 text-center text-[var(--color-danger)]" role="alert">
             {{ error }}
           </td>
         </tr>
+        <tr v-else-if="loading && items.length === 0">
+          <td colspan="8" class="py-8 text-center" role="status">Memuat item…</td>
+        </tr>
         <tr v-else-if="items.length === 0">
           <td colspan="8" class="py-8 text-center text-[var(--color-muted)]">
-            Sesi ini tidak memiliki item.
+            {{ emptyMessage ?? 'Sesi ini tidak memiliki item.' }}
           </td>
         </tr>
         <template v-else>
