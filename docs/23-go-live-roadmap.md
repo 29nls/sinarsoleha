@@ -65,7 +65,7 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | C1 | Nyalakan `disable_signup` di hosted | Teknis | `GET /auth/v1/settings` → `disable_signup: true` |
 | C1a | Pastikan provider login email tetap hidup | Teknis | `external.email: true` dan owner bisa login |
 | C2 | Bersihkan akun & data uji preview | Teknis | tidak ada akun `phase*`, 0 fixture `TEST-*`/`HOST-*` aktif |
-| C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi |
+| C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi ✅ |
 | C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi |
 | C5 | Uji backup & restore | Teknis | restore ke project uji menghasilkan 23/23 migrasi + data utuh |
 
@@ -77,9 +77,24 @@ C1a ditambahkan sebagai langkah tersendiri setelah insiden 4 November: mematikan
 `[auth.email] enable_signup` bukan menutup pendaftaran, melainkan mematikan
 **provider login email** sampai owner tidak bisa masuk. Lihat `docs/PROGRESS.md`.
 
-C3 kini bisa dikerjakan: platform hosting sudah teridentifikasi **Vercel** dari
-`site_url` remote (`sinarsoleha-macengbot-4224s-projects.vercel.app`), meski
-repo belum punya `vercel.json`. Header keamanan bisa dipasang lewat file itu.
+C3 **selesai**. Header dipasang lewat `routeRules` di `nuxt.config.ts`, bukan
+`vercel.json`, supaya berlaku di host mana pun dan bisa diuji terhadap server
+Nitro lokal. Terverifikasi: enam header muncul di response, dan aplikasi tetap
+berfungsi penuh — login staf B, dasbor, serta halaman Stok Opname (58 sesi)
+berjalan tanpa satu pun pelanggaran CSP.
+
+CSP-nya ketat karena aplikasi tidak memakai CDN, font eksternal, analytics,
+maupun gambar dari Storage: `default-src 'self'`, tanpa origin pihak ketiga.
+`'unsafe-inline'` tetap diperlukan untuk skrip karena shell SPA memuat tiga
+skrip inline (importmap, runtime config, payload Nuxt).
+
+HSTS sengaja **tanpa** `includeSubDomains`: host preview berada di domain
+bersama `vercel.app`, dan memaku subdomain di domain milik orang lain bukan
+wewenang kita. Nyalakan opsi itu setelah domain produksi sendiri tersedia.
+
+Dijaga oleh `tests/security-headers.test.ts` (7 pemeriksaan). Tes ini sudah
+diuji balik: menghapus header HSTS membuatnya gagal, lalu hijau lagi setelah
+dikembalikan.
 
 ## 5. Tahap D — Produksi (1–2 hari)
 

@@ -1530,3 +1530,45 @@ yang kedua mudah disalahartikan.
 Setelah perbaikan: `test:hosted:opname:staff-b` 8/8 dan
 `test:hosted:opname` 11/11, keduanya exit 0. Diff config tersisa 0 update.
 `site_url` dan empat URL redirect Vercel tetap utuh.
+
+## 4 November 2026 — C3 selesai: CSP + HSTS
+
+Header keamanan dipasang di `nuxt.config.ts` lewat `routeRules['/**'].headers`.
+Dipilih `routeRules` alih-alih `vercel.json` karena berlaku di host mana pun dan
+bisa diverifikasi terhadap server Nitro lokal — bukan sekadar ditulis lalu
+diasumsikan jalan.
+
+Enam header terverifikasi ada di response build produksi:
+
+| Header | Nilai |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'self'` + origin Supabase (https + wss) |
+| `Strict-Transport-Security` | `max-age=31536000` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `X-Frame-Options` | `DENY` |
+| `Permissions-Policy` | kamera, mikrofon, geolokasi, pembayaran dimatikan |
+
+CSP bisa ketat karena tidak ada CDN, font eksternal, analytics, maupun gambar
+dari Storage. `'unsafe-inline'` masih perlu untuk skrip: shell SPA memuat tiga
+skrip inline (importmap, runtime config, payload Nuxt).
+
+Dua keputusan yang sengaja diambil:
+
+- **HSTS tanpa `includeSubDomains`.** Host preview ada di domain bersama
+  `vercel.app`; memaku subdomain di domain yang bukan milik kita berisiko dan
+  tidak perlu. Nyalakan setelah domain produksi sendiri ada.
+- **`wss://` ikut di `connect-src`.** Tanpa itu realtime stok mati diam-diam —
+  halaman tetap tampil, tapi angka stok berhenti diperbarui.
+
+Verifikasi bukan hanya "header ada", tapi aplikasi masih hidup di bawahnya:
+login staf B lewat browser, dasbor termuat, halaman Stok Opname menampilkan
+58 sesi (1–20 dari 58), dan log jaringan bersih — semua request `200`/`206`,
+nol pelanggaran CSP.
+
+Dijaga `tests/security-headers.test.ts` (7 pemeriksaan). Tes diuji balik dengan
+menghapus header HSTS: gagal seperti seharusnya, lalu hijau setelah
+dikembalikan.
+
+Regresi: vitest 282/282, `test:hosted:opname` 11/11,
+`test:hosted:opname:staff-b` 8/8.
