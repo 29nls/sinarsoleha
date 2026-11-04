@@ -67,7 +67,7 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 | C2 | Bersihkan akun & data uji preview | Teknis | 0 fixture `TEST-*`/`HOST-*` aktif; akun uji **diarsipkan, bukan dihapus** (lihat di bawah) |
 | C3 | Pasang CSP + HSTS di lapisan hosting | Teknis | header ada di response produksi; aplikasi tetap berfungsi ✅ |
 | C4 | Aktifkan rate limit login bawaan Supabase Auth | Teknis | percobaan login berulang dibatasi ✅ |
-| C5 | Uji backup & restore | Teknis | restore ke project uji menghasilkan 23/23 migrasi + data utuh |
+| C5 | Uji backup & restore | Teknis | 23/23 migrasi reproducible dari nol ✅; **restore ke project uji belum** (lihat di bawah) |
 
 C1 **selesai** di preview: `disable_signup: true`, dan probe `POST
 /auth/v1/signup` mengembalikan `422 signup_disabled`. Aplikasi tidak butuh
@@ -150,6 +150,39 @@ Status C2: **sebagian selesai**. Fixture beres. Penghapusan akun ditunda dan
 dipindahkan ke Tahap D sebagai `D3a`, karena yang benar-benar dibutuhkan bukan
 membersihkan preview, melainkan **memastikan produksi tidak pernah menerima
 akun dan riwayat uji ini**.
+
+C5 **sebagian selesai — dan ini butuh keputusan Anda.** Ada dua hal berbeda yang
+disebut "uji backup & restore", dan baru satu yang bisa dibuktikan di mesin ini.
+
+**Yang sudah terbukti: migrasi reproducible dari nol.** `npm run db:replay`
+memutar ke-23 migrasi ke PostgreSQL 18.6 bersih (PGlite, WASM — mesin Postgres
+yang sama, tanpa Docker) lalu memverifikasi hasilnya: 24 tabel, RLS aktif di
+semuanya, 38 fungsi `private`, `anon` tidak bisa mengeksekusi satu pun, trigger
+`audit_logs_immutable` terpasang, dan database baru **nol produk, nol profil**.
+9/9 pemeriksaan lulus. Skrip ini diuji balik: satu baris SQL rusak disisipkan →
+2 migrasi gagal dan exit code 1.
+
+**Yang belum terbukti, dan tidak bisa saya buktikan di sini: restore sungguhan.**
+Tiga fakta yang menutup jalannya:
+
+1. **Preview tidak punya backup terkelola.** `supabase backups list` melaporkan
+   `WALG: true` tetapi `PITR: false` dan `EARLIEST/LATEST TIMESTAMP: 0`. Menurut
+dokumentasi Supabase, backup harian hanya untuk paket Pro ke atas; paket gratis
+disarankan melakukan dump logis sendiri. Jadi tidak ada titik pulih yang bisa
+direstore — bukan karena belum dicoba, tetapi karena tidak ada.
+2. **`supabase db dump` butuh Docker.** Tanpa Docker ia gagal dengan
+   `docker: command not found`, namun tetap membuat file output **0 byte** dan
+   exit code 0 — kegagalan diam-diam yang berbahaya kalau dipercaya.
+3. **Tidak ada `pg_dump`/`psql`** di mesin ini, sehingga dump logis manual pun
+   tidak bisa dijalankan.
+
+**Konsekuensi untuk produksi.** Selama produksi berjalan di paket yang sama,
+tidak akan ada backup otomatis. Itu risiko nyata untuk data penjualan, dan harus
+diputuskan sebelum go-live, bukan sesudah. Pilihannya: naik ke paket Pro (backup
+harian 7 hari) atau menjalankan dump logis terjadwal dari mesin yang punya
+Docker. Apa pun pilihannya, **`db:replay` sudah memberi jaminan yang justru lebih
+penting untuk go-live**: skema produksi bisa dibangun ulang dari repo, bukan
+tergantung pada satu database yang hidup.
 
 ## 5. Tahap D — Produksi (1–2 hari)
 

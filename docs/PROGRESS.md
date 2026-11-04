@@ -1627,3 +1627,67 @@ diam-diam pada justru metrik yang menentukan boleh-tidaknya hapus akun. Sudah
 diperbaiki dengan paginasi; angka benar 4.539 baris, 4 akun sebagai pelaku.
 
 Regresi: vitest 288/288, typecheck bersih.
+
+## C5 — Migrasi terbukti reproducible; backup terkelola tidak ada
+
+C5 menuntut "restore ke project uji menghasilkan 23/23 migrasi + data utuh".
+Bagian migrasi bisa dibuktikan di mesin ini; bagian restore tidak.
+
+### Yang terbukti
+
+`npm run db:replay` (`scripts/migration-replay.mjs`) memutar ke-23 migrasi ke
+PostgreSQL 18.6 bersih lewat PGlite — build WASM dari mesin Postgres yang sama,
+tanpa Docker. Objek platform yang disediakan Supabase (role `anon`,
+`authenticated`, `service_role`, skema `auth`, `auth.uid()`) dibuat lebih dulu;
+kalau daftar bootstrap itu kurang, migrasi gagal keras di sini, bukan di produksi.
+
+Hasil: **23/23 migrasi, 9/9 pemeriksaan lulus** — 24 tabel, RLS aktif di
+semuanya, 38 fungsi `private`, `anon` tidak bisa mengeksekusi satu pun, trigger
+`audit_logs_immutable` terpasang, `units_of_measure` terisi 8 baris, dan database
+baru **nol produk, nol profil**.
+
+Dua kegagalan nyata yang ditemukan dan diperbaiki selama penulisan:
+`pg_trgm` harus didaftarkan sebagai modul PGlite (bukan tersedia otomatis), dan
+`auth.users` perlu kolom `raw_user_meta_data` yang dipakai provisioning profil.
+Keduanya persis jenis perbedaan yang membuat replay berguna.
+
+Skrip diuji balik: satu baris SQL rusak disisipkan ke migrasi ke-2 → 2 migrasi
+gagal dan exit code 1. Migrasi asli dipulihkan, `git diff` bersih, 23/23 lagi.
+
+Koreksi asumsi: `categories` **tidak** di-seed migrasi (hanya
+`units_of_measure`); kategori dibuat owner lewat aplikasi. Pemeriksaan diubah
+menjadi menegaskan `categories` tetap kosong, yang sekaligus menangkap migrasi
+yang keliru membawa data katalog demo.
+
+### Yang tidak terbukti, dan kenapa
+
+`supabase backups list --project-ref ptbllrugrjepdhhdkzxn`:
+
+```
+REGION                     | WALG | PITR  | EARLIEST TIMESTAMP | LATEST TIMESTAMP
+Southeast Asia (Singapore) | true | false | 0                  | 0
+```
+
+`WALG: true` tetapi **`PITR: false`** dan tidak ada titik pulih sama sekali.
+Dokumentasi Supabase: backup harian hanya untuk paket Pro ke atas; paket gratis
+disarankan melakukan dump logis sendiri. Jadi restore tidak bisa diuji karena
+**tidak ada backup untuk direstore**.
+
+`supabase db dump --linked` juga tidak bisa dipakai: ia memerlukan Docker, gagal
+dengan `docker: command not found`, namun tetap membuat file output **0 byte**
+dan exit code 0. Kegagalan diam-diam ini berbahaya kalau outputnya dipercaya
+sebagai backup. Tidak ada `pg_dump`/`psql` di mesin ini, jadi dump manual juga
+tertutup.
+
+### Konsekuensi
+
+Selama produksi berjalan di paket yang sama, **tidak akan ada backup otomatis**.
+Untuk data penjualan itu risiko nyata dan harus diputuskan sebelum go-live:
+naik ke paket Pro (backup harian 7 hari) atau menjalankan dump logis terjadwal
+dari mesin yang punya Docker.
+
+Yang tetap menguntungkan: `db:replay` membuktikan skema produksi bisa dibangun
+ulang dari repo. Itu jaminan yang lebih penting daripada satu database hidup,
+dan sekarang bisa dijalankan siapa pun tanpa Docker.
+
+Regresi: vitest 288/288, typecheck bersih.
