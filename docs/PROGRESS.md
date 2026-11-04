@@ -1785,3 +1785,16 @@ Tahap 1 (repo) selesai dan sudah di-commit (`2ae64c8`) serta di-push ke
 Keputusan b mengubah D1a: pilihan tertulis sudah ada, tetapi kriteria lulusnya
 belum — satu restore ke project uji masih harus dibuktikan sebelum D5. Tahap 3
 (gate Phase 5F) dan Tahap 4 (produksi) belum dimulai.
+
+### Persiapan Tahap 3 (read-only)
+
+Cakupan latihan A2 sudah dipilih: kategori `PERABOTAN MANGKUK` (id 131), 18
+produk, semuanya aktif, semuanya berstok `NULL`, satu di antaranya
+(`PER-M1144`) tanpa `sale_price`.
+
+Ditemukan satu batasan yang mengubah rencana konflik versi: `complete_sale` dan
+`adjust_stock` menolak produk berstok `NULL` dengan `STOCK_UNKNOWN`, jadi
+`stock_version` tidak bisa dinaikkan sebelum ada saldo. Konflik versi karena itu
+dipicu pada sesi **kedua** atas kategori yang sama, setelah sesi pertama
+menetapkan saldo awal. `docs/22` §5.0 dan §5.3 sudah diperbarui; tidak ada baris
+database yang ditulis.

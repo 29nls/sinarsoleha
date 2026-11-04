@@ -15,8 +15,10 @@ berhasil diposting:
 1. Dua `inventory_staff` aktif (`a3333333-…` dan staf B) masing-masing bisa
    membuka `/stok-opname`; keduanya **tidak** bisa membuka `/users`, menyetujui,
    memposting, atau membatalkan sesi.
-2. Satu sesi opname nyata dibuat atas katalog sebenarnya, dihitung oleh dua
-   orang pada rentang SKU yang tidak tumpang tindih, lalu `submit`.
+2. Satu sesi opname nyata dibuat, dihitung oleh dua orang pada rentang SKU yang
+   tidak tumpang tindih, lalu `submit`. Untuk preview, sesi itu adalah latihan
+   kategori `PERABOTAN MANGKUK` (§5.0); hitungan seluruh katalog dikerjakan di
+   produksi sebagai D5.
 3. `blocker_count = 0`, `pending = 0`, dan `needs_recount = 0` sebelum submit.
 4. Owner menyetujui lalu memposting satu kali dengan konfirmasi eksplisit.
 5. Setiap perubahan saldo punya movement `opname_adjustment` atau
@@ -47,7 +49,9 @@ frasa itu, pekerjaan berhenti pada langkah persiapan read-only.
   jalur adalah RPC opname.
 - Tidak ada `service_role` di klien dan tidak ada kredensial yang dicetak.
 - Sesi yang sudah `posted` bersifat final. Koreksi berikutnya lewat sesi baru.
-- Satu sesi nyata saja. Sesi tambahan hanya bila owner memintanya.
+- A2 memakai **dua** sesi latihan pada kategori yang sama: L1 untuk menetapkan
+  saldo awal, L2 untuk membuktikan konflik versi (§5.3). Tidak ada sesi lain di
+  luar itu tanpa permintaan owner.
 
 ## 4. Persiapan (read-only, boleh dilakukan sekarang)
 
@@ -119,6 +123,21 @@ menulis" yang lulus. Itu perilaku yang benar, bukan kegagalan skrip.
 
 ## 5. Urutan eksekusi
 
+### 5.0 Cakupan latihan (A2)
+
+Sesuai keputusan owner 4 November 2026 (butir a), A2 adalah **latihan kecil**,
+bukan hitungan penuh. Cakupan yang dipilih: kategori **`PERABOTAN MANGKUK`
+(id 131)** — 18 produk, semuanya aktif, semuanya berstok `NULL`.
+
+Alasan pemilihan: cukup kecil untuk diselesaikan dua orang dalam satu duduk,
+semua item memakai jalur `opening_balance` (sehingga saldo awal dan selisih
+teruji sekaligus), dan tidak ada produk berstok yang bisa merusak baseline §4.5
+selain 18 baris ini.
+
+Kedelapan belas item dihitung dan diposting di sesi L1. Konflik versi tidak bisa
+dipicu di sesi ini karena semua produk masih berstok `NULL`; buktinya diambil di
+sesi L2 sesuai §5.3.
+
 ### 5.1 Membuat sesi
 
 1. Owner atau staf A membuat sesi dari `/stok-opname` → **Sesi baru**.
@@ -140,14 +159,29 @@ menulis" yang lulus. Itu perilaku yang benar, bukan kegagalan skrip.
 
 ### 5.3 Membuktikan konflik versi
 
-1. Saat satu item masih `pending`, catat stok/versinya.
-2. Dari browser kasir, buat transaksi yang mengubah stok item itu, lalu
-   selesaikan pembayarannya.
-3. Kembali ke sesi opname dan simpan hitungan untuk item tersebut.
-4. Panel recount harus muncul dengan **tiga angka** berbeda: snapshot opname,
-   stok sistem saat ini, dan hitungan baru.
-5. Hitung ulang secara fisik, jangan menyalin angka snapshot. Simpan.
-6. Item kembali `pending` sampai dihitung ulang; approval sebelumnya direset.
+Konflik versi **tidak bisa** dipicu pada sesi yang masih mengisi saldo awal.
+`complete_sale` dan `adjust_stock` sama-sama menolak produk berstok `NULL`
+(`STOCK_UNKNOWN`), jadi satu-satunya cara mengubah `stock_version` sebelum
+posting adalah posting opname itu sendiri. Karena itu bukti konflik diambil
+pada **sesi kedua** atas kategori yang sama, setelah sesi pertama menetapkan
+saldo.
+
+Urutan:
+
+1. Sesi L2 dibuat atas kategori `PERABOTAN MANGKUK`, sekarang produknya sudah
+   berstok. Catat `stock_on_hand` dan `stock_version` satu produk yang punya
+   `sale_price` (misalnya `PER-M1128`).
+2. Hitung semua item **kecuali** produk itu; biarkan satu item `pending`.
+3. Dari browser kasir, jual 1 unit produk tersebut dan selesaikan pembayaran.
+   Verifikasi `stock_version` naik 1.
+4. Kembali ke sesi opname, simpan hitungan untuk item itu dengan angka fisik
+   yang benar (bukan menyalin snapshot).
+5. Submit lalu approve, kemudian posting. Posting harus mengembalikan
+   `result = version_conflict`, sesi kembali `counting`, approval direset, dan
+   panel **Stok berubah saat menghitung** muncul dengan snapshot, stok sekarang,
+   dan `versi lama → versi baru`.
+6. Hitung ulang item itu; dialog harus menampilkan stok live, bukan snapshot.
+   Simpan, submit, approve, posting lagi — kali ini `result = posted`.
 
 Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 
@@ -223,6 +257,7 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Verifikasi staf B | **8/8 lulus** — `npm run test:hosted:opname:staff-b`, exit 0 |
 | Staf B | **ada & aktif** — `phase5f.staffb@sinarsoleha.com`, `4ba5012e-7e53-4f85-892d-27524eb8071a` |
 | Gate Phase 5F | belum diminta — **satu-satunya blocker tersisa** |
+| Cakupan A2 | dipilih: kategori `PERABOTAN MANGKUK` (id 131), 18 produk aktif, semua berstok `NULL` — lihat §5.0 |
 | Sesi opname nyata | belum dibuat |
 | Posting | belum dilakukan |
 | Produksi | tidak disentuh |

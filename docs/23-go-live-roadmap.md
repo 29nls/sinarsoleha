@@ -37,7 +37,8 @@ keraguan apakah posting menghasilkan saldo dan ledger yang konsisten.
 
 Catatan A2: sengaja **kecil**, bukan seluruh katalog. Tujuannya membuktikan
 mekanisme, bukan menyelesaikan pekerjaan gudang. Konflik versi (§5.3) tetap
-wajib dipicu sekali di sini.
+wajib dipicu sekali di sini, dan itu butuh **dua** sesi: sesi pertama menetapkan
+saldo awal, sesi kedua memicu konflik setelah produknya berstok.
 
 ## 3. Tahap B — Saldo awal (3–5 hari kerja)
 
@@ -237,7 +238,7 @@ Tahap 2 terjawab; butir di bawah tidak perlu ditanyakan lagi.
 
 | Butir | Keputusan | Akibat |
 | --- | --- | --- |
-| a | Latihan opname **kecil di preview dulu**, lalu hitung penuh di produksi | A2 dikerjakan di Tahap 3 sebagai latihan ~20 produk; D5 tetap hitungan fisik penuh |
+| a | Latihan opname **kecil di preview dulu**, lalu hitung penuh di produksi | A2 dikerjakan di Tahap 3 sebagai latihan 18 produk (`PERABOTAN MANGKUK`); D5 tetap hitungan fisik penuh |
 | b | Backup produksi = **paket berbayar** dengan backup harian otomatis | D1 dibuat di organisasi berbayar; D1a masih menunggu satu restore ke project uji |
 | c | Ganti kata sandi **lewat dashboard**, tanpa halaman in-app | Tidak ada kode baru; `docs/24` §8 berlaku |
 | d | Isi nota **tetap seperti sekarang** (tanpa alamat/telepon/footer) | Tidak ada perubahan `ReceiptView.vue` |
