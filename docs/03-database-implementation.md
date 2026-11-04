@@ -1,7 +1,7 @@
 # Implementasi Database
 
-**Status: seluruh 17 migrasi (Phase 2–5A + Realtime + Phase 11) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; produksi belum menerima migrasi apa pun.**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. Phase 11 menambah migrasi ke-17 (`20261106100000_stock_adjustment.sql`), diterapkan 4 November 2026 dan diuji hosted 8/8. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: 17 dari 18 migrasi (Phase 2–5A + Realtime + Phase 11) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; migrasi 0018 (hardening grant `private`) masih lokal dan menunggu persetujuan; produksi belum menerima migrasi apa pun.**
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. Phase 11 menambah migrasi ke-17 (`20261106100000_stock_adjustment.sql`), diterapkan 4 November 2026 dan diuji hosted 8/8. Migrasi ke-18 (`20261106110000_private_function_grants.sql`) mencabut EXECUTE `PUBLIC` bawaan pada seluruh fungsi `private` dan baru lulus tes lokal. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -172,7 +172,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 
 ## 6. Apply ke Hosted
 
-Preview **sudah sinkron 17/17 migrasi**; **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
+Preview **sudah sinkron 17/18 migrasi** — hanya `20261106110000_private_function_grants.sql` yang belum di-push dan menunggu persetujuan. **Produksi belum menerima migrasi apa pun.** Untuk produksi gunakan project terpisah dan backup:
 
 ```bash
 npx supabase link --project-ref <production-ref>
@@ -193,6 +193,8 @@ Jangan menjalankan `db push` ke produksi tanpa persetujuan owner.
 | `20261103110000_transaction_engine.sql` (4A) | `migration repair --status applied` | idem; menjalankan ulang SQL berisiko gagal pada objek existing |
 | `20261104100000_stock_opname_engine.sql` (5A) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026 |
 | `20261105100000_stock_broadcast.sql` | `db push --linked` | benar-benar baru, diterapkan 4 November 2026 |
+| `20261106100000_stock_adjustment.sql` (11) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026; probe hosted 8/8 |
+| `20261106110000_private_function_grants.sql` (12) | **belum** | lulus 88/88 tes lokal; menunggu persetujuan |
 
 `migration repair` hanya mencatat versi di `supabase_migrations.schema_migrations`; tidak menjalankan SQL. Sebelum repair 3B/4A, keberadaan objek dipastikan lewat probe REST: tabel `product_import_runs`/`product_import_rows` ada, RPC `begin_product_import`/`complete_sale`/`void_sale` membalas 401 (ada & terlindungi), sedangkan `stock_opnames.creation_key` membalas 400 `42703` (belum ada) — penanda 5A memang belum diterapkan.
 

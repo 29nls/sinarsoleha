@@ -2452,9 +2452,25 @@ async function runSecurityTests() {
   })
 
   await test('I7 — trigger helpers reject a direct call', async () => {
+    // Since 0018 the default PUBLIC EXECUTE is revoked, so the call is denied
+    // at the privilege check (42501) before PostgreSQL can reject the trigger
+    // function for being called outside a trigger (0A000). Either way the
+    // helper is unreachable; 42501 is the stronger of the two.
     await asRole('authenticated', OWNER, async () => {
-      await expectError('0A000', () => db.query('select private.check_payment_balance()'))
+      await expectError('42501', () => db.query('select private.check_payment_balance()'))
     })
+
+    const publicExec = await db.query(
+      `select p.oid::regprocedure::text as signature
+         from pg_proc p
+         join pg_namespace n on n.oid = p.pronamespace
+        where n.nspname = 'private'
+          and has_function_privilege('public', p.oid, 'EXECUTE')`,
+    )
+    assert(
+      publicExec.rows.length === 0,
+      `private functions still grant PUBLIC: ${publicExec.rows.map((r) => r.signature).join(', ')}`,
+    )
   })
 
   await test('I8 — new tables do not inherit API privileges', async () => {

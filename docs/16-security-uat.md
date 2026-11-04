@@ -57,7 +57,8 @@ Pencarian di `app/` tidak menemukan:
 | RLS | aktif di 24/24 tabel | idem |
 | `document_counters` | tanpa policy (RPC-only) | tanpa policy (RPC-only) |
 | Fungsi `public.*` (17) | tidak ada EXECUTE | EXECUTE semua; semuanya `SECURITY DEFINER` + `search_path=""` |
-| `private.require_active_role`, `bootstrap_owner`, `write_audit`, `next_document_number`, wrapper RPC | tidak ada EXECUTE | tidak ada EXECUTE |
+| `private.require_active_role`, `bootstrap_owner`, `write_audit`, `next_document_number`, wrapper RPC | tidak ada EXECUTE | tidak ada EXECUTE (hanya `has_role` yang di-grant) |
+| Fungsi `private` lain (trigger/helper) | tidak ada EXECUTE (dicabut 0018) | tidak ada EXECUTE (dicabut 0018) |
 | Schema `private` | tanpa USAGE | USAGE (dibutuhkan helper internal) |
 | `auth.users` | tidak bisa SELECT | tidak bisa SELECT |
 | Default privilege | tidak ada grant baru | tidak ada grant baru |
@@ -67,17 +68,21 @@ grant/RLS akan gagal di CI lokal, bukan baru ketahuan di produksi.
 
 ### 2.4 Temuan residual (tidak menaikkan risiko)
 
-1. **EXECUTE default pada fungsi trigger.** `set_updated_at`,
-   `block_audit_log_mutation`, `block_stock_ledger_mutation`,
+1. **EXECUTE default pada fungsi trigger — sudah diperbaiki (0018).**
+   `set_updated_at`, `block_audit_log_mutation`, `block_stock_ledger_mutation`,
    `guard_opname_immutable`, `guard_opname_status_transition`,
    `check_payment_balance`, `check_transaction_balance`,
    `assert_transaction_balanced`, `guard_opname_item_write`, dan
-   `handle_new_auth_user` masih membawa grant `PUBLIC` bawaan PostgreSQL.
-   Dampaknya nihil: `anon` tidak punya USAGE pada schema `private`, dan
-   pemanggilan langsung fungsi trigger ditolak PostgreSQL (`0A000`). Tes I5/I7
-   membuktikan keduanya. Perbaikan `revoke all … from public` sebaiknya
-   digabung ke migrasi berikutnya yang sudah menunggu approval, bukan migrasi
-   tambahan di luar persetujuan.
+   `handle_new_auth_user` sebelumnya membawa grant `PUBLIC` bawaan PostgreSQL.
+   Dampaknya memang nihil — `anon` tidak punya USAGE pada schema `private` dan
+   pemanggilan langsung fungsi trigger ditolak PostgreSQL — tetapi migrasi
+   `20261106110000_private_function_grants.sql` tetap mencabutnya:
+   `revoke all on all functions in schema private from public`, lalu
+   `grant execute on function private.has_role(text[]) to authenticated` karena
+   seluruh RLS bergantung padanya, plus `alter default privileges … revoke
+   execute on functions from public` agar helper baru lahir terkunci. I7 kini
+   membuktikan dua hal sekaligus: panggilan langsung gagal `42501`, dan nol
+   fungsi `private` masih memberi EXECUTE ke `PUBLIC`.
 2. **Akun nonaktif tetap bisa login.** Ini disengaja: user nonaktif dapat
    membaca profilnya sendiri agar UI menampilkan pesan, tetapi seluruh RLS/RPC
    menolak operasi. Diuji di hosted (`inactive account can authenticate but

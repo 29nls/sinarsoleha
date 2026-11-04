@@ -1107,3 +1107,33 @@ dan render di browser kedua — bukan hanya waktu pengiriman pesan. Karena
 checkout tetap memvalidasi stok di PostgreSQL, pesan yang terlambat tidak bisa
 menyebabkan oversell; layar hanya menampilkan angka basi sampai pesan atau
 refetch berikutnya.
+
+## 4 November 2026 — Hardening grant schema `private` (Phase 12)
+
+Temuan residual dari audit Phase 8: PostgreSQL memberi `EXECUTE` ke `PUBLIC`
+pada setiap fungsi baru, termasuk 10 fungsi trigger di schema `private`.
+Tidak pernah dapat dieksploitasi (`anon` tanpa USAGE, panggilan langsung
+ditolak), tetapi satu grant USAGE yang salah di masa depan akan membuka
+semuanya sekaligus.
+
+Migrasi `20261106110000_private_function_grants.sql`:
+
+- `revoke all on all functions in schema private from public`
+- `grant execute on function private.has_role(text[]) to authenticated` —
+  satu-satunya helper yang memang dipanggil RLS (32 policy memakainya)
+- `alter default privileges in schema private revoke execute on functions from public`
+
+Fungsi trigger tetap bekerja: PostgreSQL memeriksa privilege pemilik tabel,
+bukan sesi, saat trigger menyala.
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `npm run test:db` | **88/88** (I7 diperketat) |
+| `npm test` | 257/257 |
+| `npm run typecheck` | exit 0 |
+| Fungsi `private` dengan EXECUTE `PUBLIC` | 0 |
+| Panggilan langsung helper trigger | `42501` (sebelumnya `0A000`) |
+
+I7 sekarang mengunci dua hal: panggilan langsung ditolak, dan nol fungsi
+`private` memberi EXECUTE ke `PUBLIC`. Migrasi ini **belum di-push** — masih
+menunggu persetujuan, dan produksi tetap belum menerima migrasi apa pun.
