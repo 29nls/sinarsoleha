@@ -1462,5 +1462,10 @@ Runbook eksekusi stok opname fisik nyata ditulis di
 urutan buat sesi → hitung → buktikan konflik versi → submit → setujui → posting,
 verifikasi pasca-posting, rollback, dan daftar bukti yang harus disimpan.
 
+Persiapan read-only §4 sudah dijalankan: migrasi 23/23, 0 fixture aktif, dan
+regresi `npm run test:hosted:opname` 11/11. Baseline 4 November 2026 dicatat:
+1.409 produk (1.361 aktif), 1.374 stok `NULL`, 104 movement, 58 sesi, 2.802
+opname item, dan 13 `stock_discrepancy_logs`.
+
 Belum ada sesi opname nyata yang dibuat, belum ada posting, dan produksi tidak
 disentuh. Pekerjaan tetap menunggu staf B.

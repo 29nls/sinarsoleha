@@ -65,6 +65,29 @@ frasa itu, pekerjaan berhenti pada langkah persiapan read-only.
 Baseline 4.5 wajib dicatat sebelum sesi dibuat. Tanpa baseline, klaim "hanya
 item yang selisih berubah" tidak bisa dibuktikan.
 
+### Baseline 4 November 2026 (read-only)
+
+Diambil dari preview sebelum sesi nyata dibuat; tidak ada baris yang ditulis.
+
+| Metrik | Nilai |
+| --- | --- |
+| Produk total / aktif | 1.409 / 1.361 |
+| Stok `NULL` | 1.374 |
+| Jumlah `stock_on_hand` | 377 |
+| Jumlah `stock_version` | 76 |
+| Fixture total / aktif | 48 / **0** |
+| `stock_movements` | 104 |
+| `stock_opnames` | 58 |
+| `stock_opname_items` | 2.802 |
+| `stock_discrepancy_logs` | 13 |
+
+Catatan: tabel log selisih bernama **`stock_discrepancy_logs`**. Query ke
+`stock_discrepancies` akan gagal atau mengembalikan nol dan membuat baseline
+tampak bersih padahal tidak.
+
+Angka ini adalah pembanding, bukan target. Setelah posting, selisih yang sah
+hanya boleh muncul pada item yang memang dihitung berbeda.
+
 ## 5. Urutan eksekusi
 
 ### 5.1 Membuat sesi
@@ -164,8 +187,10 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Item | Status |
 | --- | --- |
 | Runbook | selesai — dokumen ini |
-| Migrasi 23/23 | selesai |
-| Fixture aktif | 0 |
+| Migrasi 23/23 | selesai — diverifikasi ulang 4 November 2026 |
+| Fixture aktif | 0 — diverifikasi ulang |
+| Baseline §4.5 | selesai — lihat tabel di atas |
+| Regresi read-only | 11/11 lulus |
 | Staf B | **belum ada** — blocker |
 | Gate Phase 5F | belum diminta |
 | Sesi opname nyata | belum dibuat |
