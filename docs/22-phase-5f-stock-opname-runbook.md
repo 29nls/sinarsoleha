@@ -213,9 +213,9 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Fixture aktif | 0 — diverifikasi ulang |
 | Baseline §4.5 | selesai — lihat tabel di atas |
 | Regresi read-only | 11/11 lulus |
-| Verifikasi staf B | siap — `npm run test:hosted:opname:staff-b` (kini 1/8) |
-| Staf B | **belum ada** — blocker |
-| Gate Phase 5F | belum diminta |
+| Verifikasi staf B | **8/8 lulus** — `npm run test:hosted:opname:staff-b`, exit 0 |
+| Staf B | **ada & aktif** — `phase5f.staffb@sinarsoleha.com`, `4ba5012e-7e53-4f85-892d-27524eb8071a` |
+| Gate Phase 5F | belum diminta — **satu-satunya blocker tersisa** |
 | Sesi opname nyata | belum dibuat |
 | Posting | belum dilakukan |
 | Produksi | tidak disentuh |

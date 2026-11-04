@@ -1469,8 +1469,15 @@ opname item, dan 13 `stock_discrepancy_logs`.
 
 Verifikasi staf B disiapkan sebagai `npm run test:hosted:opname:staff-b`
 (`scripts/opname-staff-b-readiness.mjs`): read-only, delapan pemeriksaan, dan
-menolak jalan bila target bukan preview. Selama akun belum ada hasilnya 1/8
-dengan exit code 1 — hanya pemeriksaan "tidak menulis" yang lulus.
+menolak jalan bila target bukan preview.
+
+Staf B kini ada dan terverifikasi **8/8**. Akun dibuat lewat Admin API resmi
+(`POST /auth/v1/admin/users` dengan `email_confirm: true`), bukan SQL langsung ke
+`auth.users`, lalu profilnya diubah ke `inventory_staff` aktif lewat RPC owner
+`admin_upsert_profile`. Identitas: `phase5f.staffb@sinarsoleha.com`
+(`4ba5012e-7e53-4f85-892d-27524eb8071a`). Bukti: staf B bisa membaca permukaan
+opname, hanya melihat profilnya sendiri, dan ditolak `approve`/`post`/`cancel`
+dengan `42501` tanpa satu baris pun berubah.
 
 Belum ada sesi opname nyata yang dibuat, belum ada posting, dan produksi tidak
-disentuh. Pekerjaan tetap menunggu staf B.
+disentuh. Satu-satunya blocker tersisa adalah frasa gate Phase 5F.

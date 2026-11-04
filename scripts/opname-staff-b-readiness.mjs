@@ -163,7 +163,7 @@ await test('staff B may read the opname surface', async () => {
     .from('stock_opnames')
     .select('id, opname_no, status')
     .limit(1)
-  assert(!error, `opname list read failed: ${error.message}`)
+  assert(!error, `opname list read failed: ${error?.message}`)
   assert(Array.isArray(sessions), 'opname list did not return rows')
 
   if (sessions.length === 0) return
@@ -184,7 +184,7 @@ await test('staff B cannot manage users', async () => {
   assert(staffB, 'staff B client unavailable')
   const { data, error } = await staffB.from('profiles').select('id').neq('id', NIL_UUID)
   // RLS limits staff to their own profile row; it must never see everyone.
-  assert(!error, `profile list failed: ${error.message}`)
+  assert(!error, `profile list failed: ${error?.message}`)
   assert(data.length <= 1, `staff B can read ${data.length} profiles, expected only its own`)
 })
 
