@@ -1063,8 +1063,23 @@ jalur resmi: satu movement `manual_adjustment` beralasan, audit, dan idempotensi
 | `npm run build` | exit 0 (1,92 MB / 474 kB gzip) |
 | `npm run audit:bundle` | 0 temuan |
 
-### Belum diterapkan ke preview
+### Penerapan ke preview (4 November 2026)
 
-Migrasi ini **belum** di-push. Prasyaratnya sama seperti fase sebelumnya:
-`supabase migration list`, `db push --dry-run`, lalu approval eksplisit. Setelah
-push, jalankan `gen types --linked` dan uji satu koreksi nyata di hosted.
+`supabase migration list --linked` menunjukkan satu-satunya selisih adalah
+`20261106100000`; `db push --linked --dry-run` mengonfirmasi hanya migrasi itu
+yang akan jalan, lalu `db push --linked` menerapkannya.
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `migration list --linked` | 17/17 sinkron |
+| `gen types --linked` | `adjust_stock` ada; signature identik dengan lokal |
+| `adjust_stock` tanpa sesi | 401 (ada & terlindungi) |
+| Probe hosted (`.tmp/adjust-hosted-probe.mjs`) | **8/8 lulus** |
+| Saldo produk uji | kembali ke nilai awal (0); net delta probe = 0 |
+| Data impor | utuh: 1.360 produk berstok `NULL` tidak tersentuh |
+
+Probe hosted membuktikan: kasir ditolak, staf gudang boleh menambah, retry
+dengan kunci idempoten tidak menggandakan stok, catatan kosong /
+`opening_balance` / `delta 0` ditolak, owner bisa mengoreksi balik, dan ledger
+mencatat `manual_adjustment` dengan `transaction_id`/`stock_opname_id` NULL
+plus audit `stock.adjust`.

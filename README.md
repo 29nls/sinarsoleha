@@ -17,7 +17,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 8 | Keamanan & UAT | **Audit selesai; UAT hosted siap dijalankan di preview** — lihat `docs/16-security-uat.md` |
 | 9 | Halaman pengguna, audit log, filter stok rendah, ekspor CSV | **Selesai & diuji lokal** — lihat `docs/17-users-audit.md` |
 | 10 | Realtime stok (POS-03, NFR-04, DB-16) | **Selesai & sudah di preview (Broadcast terverifikasi hosted)** — lihat `docs/18-realtime-stock.md` |
-| 11 | Koreksi stok manual (DB-03) | **Selesai & diuji lokal; migrasi belum di-push** |
+| 11 | Koreksi stok manual (DB-03) | **Selesai, migrasi di preview & probe hosted 8/8 lulus** |
 
 Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal serta hosted; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **lulus** pada Phase 4D (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`. Produksi belum diterapkan.
 
@@ -45,7 +45,7 @@ Phase 9 menambah dua halaman administrasi owner-only: `/users` untuk mengubah na
 
 Phase 10 menambahkan Realtime stok (POS-03, NFR-04, DB-16): trigger `after update of stock_on_hand, stock_version` mengirim Broadcast **private** ke topic `store:stock` dengan payload minimal `{product_id, sku, stock_on_hand, stock_version}`, dan policy `realtime.messages` membatasinya ke sesi `authenticated`. Di kasir, `useStockRealtime` memperbarui saldo di keranjang dan hasil pencarian tanpa muat ulang, menolak pesan dengan `stock_version` lama, serta refetch + resubscribe setelah reconnect. Checkout tetap memvalidasi stok di database. Produk berstok `NULL` dan update nama/harga tidak disiarkan. Migrasi `20261105100000_stock_broadcast.sql` sudah diterapkan ke preview dan Broadcast-nya terverifikasi hosted — lihat `docs/18-realtime-stock.md`.
 
-Phase 11 menutup RPC mutasi terakhir: `adjust_stock` (migrasi `20261106100000_stock_adjustment.sql`) memungkinkan owner dan staf gudang mengoreksi saldo dengan satu movement `manual_adjustment` beralasan. Alasan dan catatan wajib, presisi mengikuti satuan, hasil negatif ditolak, setiap koreksi menulis audit `stock.adjust`, dan kunci idempotensi mencegah double submit. Halaman `/inventory` mendapat tombol **Koreksi** dengan dialog pratinjau saldo; produk berstok `NULL` tetap harus lewat opname saldo awal. Migrasi sudah diuji lokal (88/88 tes DB) tetapi **belum di-push ke preview**.
+Phase 11 menutup RPC mutasi terakhir: `adjust_stock` (migrasi `20261106100000_stock_adjustment.sql`) memungkinkan owner dan staf gudang mengoreksi saldo dengan satu movement `manual_adjustment` beralasan. Alasan dan catatan wajib, presisi mengikuti satuan, hasil negatif ditolak, setiap koreksi menulis audit `stock.adjust`, dan kunci idempotensi mencegah double submit. Halaman `/inventory` mendapat tombol **Koreksi** dengan dialog pratinjau saldo; produk berstok `NULL` tetap harus lewat opname saldo awal. Migrasi sudah diterapkan ke preview dan diuji hosted (8/8 probe), dengan 88/88 tes DB lokal.
 
 ## Menjalankan
 
