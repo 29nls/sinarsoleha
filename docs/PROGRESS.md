@@ -936,11 +936,74 @@ memvalidasi stok di database.
 | `npm run build` | exit 0 (1,92 MB / 474 kB gzip) |
 | `npm run audit:bundle` | 151 berkas, **0 temuan** |
 
+### Penerapan ke preview (4 November 2026)
+
+Owner menyetujui penerapan Phase 5A + Broadcast. `supabase db push --linked`
+menjalankan `20261104100000` dan `20261105100000`; riwayat 3B/4A dicatat lewat
+`migration repair --status applied` karena objeknya sudah ada. Hasil:
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `migration list --linked` | 16/16 sinkron |
+| `gen types --linked` vs lokal | 24 tabel, nol drift kolom |
+| 6 RPC opname tanpa sesi | 401 (ada & terlindungi) |
+| Data impor | utuh: 1.361 baris staging, 1.360 produk impor |
+| Broadcast `store:stock` | klien owner `SUBSCRIBED`, menerima `stock_changed` dengan payload 4 kunci setelah opname diposting |
+| `npm run typecheck` / `npm test` / `npm run test:db` | 0 / 251 / 83 |
+
 ### Batasan
 
-- Migrasi `20261105100000` **belum diterapkan ke preview**; butuh persetujuan
-  eksplisit seperti Phase 5A. Tanpa itu badge tetap “Stok manual”.
 - Uji dua browser pada hosted belum dijalankan; yang terverifikasi adalah
-  trigger/policy SQL dan logika klien.
+  trigger/policy SQL, pengiriman Broadcast nyata ke satu klien, dan logika klien.
 - Hanya saldo yang disinkronkan; nama/harga/status aktif baru terlihat setelah
   pencarian ulang.
+
+## 4 November 2026 — Penerapan migrasi ke preview (Phase 5A + Realtime)
+
+Owner menyetujui penerapan Phase 5A + Broadcast ke preview
+`ptbllrugrjepdhdhhdkzxn`. Produksi tidak disentuh.
+
+### Langkah
+
+1. `supabase link --project-ref ptbllrugrjepdhdhhdkzxn` (CLI v2.122.0).
+2. Verifikasi pra-push: `db dump`/`db pull` tidak bisa (Docker tidak tersedia),
+   jadi keberadaan objek diprobe lewat REST. Tabel `product_import_runs`/
+   `product_import_rows` ada dan RPC `begin_product_import`, `complete_sale`,
+   `void_sale` membalas 401 → objek 3B/4A sudah ada, hanya riwayatnya belum
+   tercatat. Kolom `stock_opnames.creation_key` membalas 400 `42703` → 5A
+   memang belum diterapkan.
+3. `migration repair --linked --status applied 20261103090000 20261103110000`
+   agar SQL 3B/4A tidak dijalankan dua kali.
+4. `db push --dry-run` menyisakan tepat dua migrasi, lalu `db push --linked`
+   menerapkan `20261104100000_stock_opname_engine.sql` dan
+   `20261105100000_stock_broadcast.sql`.
+
+### Verifikasi pasca-push
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| `migration list --linked` | 16/16 versi sinkron (remote terakhir `20261105100000`) |
+| `stock_opnames?select=creation_key` | 401 (kolom ada); kontrol negatif tetap 400 `42703` |
+| 6 RPC opname tanpa sesi | 401 semua (ada & terlindungi) |
+| `gen types --linked` vs `types/database.generated.ts` | 24 tabel, nol drift kolom; 17 fungsi sama |
+| `gen types --linked --schema realtime` | `realtime.send(...)` + `realtime.messages` ada → trigger tidak no-op |
+| Data | 1.361 baris staging, 1.360 produk impor, 1.507 isu, 33 transaksi utuh |
+| `npm run typecheck` | exit 0 |
+| `npm test` | 251/251 (19 file) |
+| `npm run test:db` | 83/83 |
+
+### Bukti Broadcast hosted
+
+Klien nyata dengan akun uji owner `SUBSCRIBED` ke channel privat `store:stock`,
+lalu alur opname lengkap dijalankan lewat RPC (create → count `opening_balance`
+→ submit → approve → post) pada produk uji `TEST-REALTIME-*`. Klien menerima
+tepat satu event `stock_changed` dengan payload
+`{product_id, sku, stock_on_hand, stock_version}`. Tiga sesi draft uji
+dibatalkan lewat `cancel_stock_opname`; satu sesi posted dibiarkan (produk uji
+nonaktif, tidak terlihat di kasir).
+
+### Sisa prasyarat produksi
+
+`disable_signup` di hosted, pembersihan akun/data uji preview, CSP/HSTS di
+lapisan hosting, rate limit login, backup/restore teruji, dan `db push` ke
+project produksi terpisah — semuanya masih terbuka.

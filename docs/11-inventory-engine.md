@@ -7,7 +7,7 @@ menulis `products.stock_on_hand`.
 
 - Migrasi: `supabase/migrations/20261104100000_stock_opname_engine.sql`
 - Tes: `scripts/db-test.mjs` (grup A–H), `npm run test:db`
-- Status: **lokal lulus 72/72; belum diterapkan ke preview; UI (5B) belum dibuat**
+- Status: **lokal lulus 72/72; sudah diterapkan ke preview 4 November 2026; UI (5B) menyusul**
 
 ## 1. Prinsip arsitektur
 

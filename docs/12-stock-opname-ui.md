@@ -10,7 +10,7 @@ perubahan stok tetap terjadi di database; UI hanya memanggil RPC.
 - Composable: `app/composables/useOpnameList.ts`, `app/composables/useOpnameDetail.ts`
 - Komponen: `app/components/opname/*.vue`
 - Tes: `tests/opname.test.ts`, `tests/opname-service.test.ts`, `tests/opname-queries.test.ts`
-- Status: **selesai & diuji lokal; migrasi 5A belum diterapkan ke preview**
+- Status: **selesai & diuji; migrasi 5A sudah diterapkan ke preview**
 
 ## 1. Alur pengguna
 
@@ -75,11 +75,12 @@ ketiganya owner-only di database; ini hanya affordance, bukan kontrol keamanan.
 
 ## 5. Batasan yang jujur
 
-- **Migrasi Phase 5A belum diterapkan ke preview** (`ptbllrugrjepdhhdkzxn`);
-  halaman akan gagal memuat sampai migrasi disetujui dan dijalankan. Produksi
-  tidak disentuh.
-- **Belum ada E2E hosted** untuk opname: butuh migrasi di preview dan Supabase
-  CLI terautentikasi. Yang ada saat ini hanya unit test + `typecheck` + `build`.
+- **Migrasi Phase 5A sudah diterapkan ke preview** (`ptbllrugrjepdhhdkzxn`)
+  pada 4 November 2026, jadi halaman bisa memuat data nyata. Produksi tidak
+  disentuh.
+- **Belum ada E2E browser hosted** untuk opname. Yang ada saat ini unit test,
+  `typecheck`, `build`, ditambah verifikasi alur opname lewat SDK ke preview
+  (create → count → submit → approve → post) yang memicu Broadcast stok.
 - **Posting bersifat final** dan belum ada pembalik (reversal); koreksi
   dilakukan lewat sesi opname baru.
 - **Tanpa Realtime**: dua operator yang membuka sesi sama tidak saling melihat

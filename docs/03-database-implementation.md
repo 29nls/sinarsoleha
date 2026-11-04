@@ -1,7 +1,7 @@
 # Implementasi Database
 
-**Status: Phase 2–4D selesai dan tervalidasi hosted di preview; Phase 5A selesai secara lokal (belum diterapkan ke preview).**
-Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, dan 1 migrasi staging impor Phase 3B telah diverifikasi terhadap project preview `ptbllrugrjepdhhdkzxn` (PostgreSQL 17.11). Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori, audit, dan locking nomor nota telah diuji. Migrasi Phase 4A sudah diterapkan ke preview dan tervalidasi hosted pada Phase 4D (suite 10/10, browser E2E 10/10). Migrasi Phase 5A ada di repo tetapi **belum** diterapkan ke preview. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
+**Status: seluruh 16 migrasi (Phase 2–5A + Realtime) sudah diterapkan ke preview `ptbllrugrjepdhdhhdkzxn`; produksi belum diterapkan.**
+Seluruh 11 migrasi Phase 2, 1 migrasi kategori Phase 3A, 1 migrasi staging impor Phase 3B, 1 migrasi mesin transaksi Phase 4A, 1 migrasi mesin opname Phase 5A, dan 1 migrasi Broadcast Realtime sudah ada di preview. Auth nyata, PostgREST, RLS per peran, RPC katalog/admin/kategori/transaksi/opname, audit, dan locking nomor nota telah diuji. Phase 5A + Realtime diterapkan dengan `supabase db push --linked` pada 4 November 2026 dan diverifikasi ulang lewat `migration list --linked` (16/16), `gen types --linked`, serta uji Broadcast end-to-end. **Produksi belum diterapkan**; beberapa prasyarat konfigurasi produksi masih terbuka dan dicatat di bagian 7.
 
 ## 1. Migrasi
 
@@ -23,6 +23,7 @@ Semua file berada di `supabase/migrations/` dan dijalankan berurutan. Starter SQ
 | `20261102091100_rpc_category.sql` | `upsert_category` owner-only, validasi duplikat, audit, tanpa hard delete |
 | `20261103110000_transaction_engine.sql` | `complete_sale`, `void_sale`, idempotensi, penguncian produk |
 | `20261104100000_stock_opname_engine.sql` | Phase 5A: 6 RPC opname, `creation_key`, constraint delta nol untuk opening balance, constraint cancel sesi counting |
+| `20261105100000_stock_broadcast.sql` | Phase 10: trigger `products_broadcast_stock`, `private.broadcast_product_stock()`, policy baca topik privat `store:stock` di `realtime.messages` |
 
 ### Bukti schema hosted
 
@@ -144,7 +145,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 - Snapshot stok/versi dilakukan server-side (`INSERT ... SELECT`) termasuk produk nonaktif; stok NULL dipertahankan sebagai saldo awal.
 - Konflik versi mengembalikan JSON `version_conflict` (bukan exception) agar penanda `needs_recount` dan status `counting` ter-commit.
 - Tes database: **72/72 lulus** (30 tes baru grup A–H). Unit 83/83, typecheck dan build lulus.
-- Detail: `docs/11-inventory-engine.md`. Migrasi **belum** diterapkan ke preview.
+- Detail: `docs/11-inventory-engine.md`. Migrasi **sudah diterapkan ke preview** (4 November 2026).
 
 ## 5. Status Temuan DB-01…DB-17
 
@@ -152,7 +153,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | --- | --- | --- |
 | DB-01 | Selesai | `public.upsert_product` + `set_product_cost`, owner-only, stok tidak disentuh |
 | DB-02 | Selesai | trigger provisioning + `bootstrap_owner` + `admin_upsert_profile` |
-| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A dan tervalidasi hosted (10/10); `post_stock_opname` selesai Phase 5A secara lokal (72/72 tes, belum diterapkan ke preview); `adjust_stock` masih kontrak |
+| DB-03 | Sebagian | `complete_sale`/`void_sale` selesai Phase 4A dan tervalidasi hosted (10/10); `post_stock_opname` selesai Phase 5A dan sudah diterapkan ke preview; `adjust_stock` masih kontrak |
 | DB-04 | Selesai | trigger `updated_at` |
 | DB-05 | Selesai | constraint trigger deferred pada `payments`/`transactions` |
 | DB-06 | Selesai | CHECK aritmetika + aturan referensi movement |
@@ -165,12 +166,12 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | DB-13 | Selesai | `alter default privileges` + revoke eksplisit |
 | DB-14 | Selesai | indeks entity/created_at/actor |
 | DB-15 | Selesai | `stock_movements.actor_id NOT NULL` |
-| DB-16 | Selesai (kode) | trigger Broadcast `store:stock` + policy `realtime.messages`, migrasi `20261105100000`; 3 tes grup H; belum diterapkan ke preview |
+| DB-16 | Selesai | trigger Broadcast `store:stock` + policy `realtime.messages`, migrasi `20261105100000` sudah diterapkan ke preview; 3 tes grup H + verifikasi Broadcast end-to-end |
 | DB-17 | Terdokumentasi | offboarding via `is_active = false` |
 
 ## 6. Apply ke Hosted
 
-Schema preview sudah tervalidasi; **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
+Preview **sudah sinkron 16/16 migrasi**; **produksi belum**. Untuk produksi gunakan project terpisah dan backup:
 
 ```bash
 npx supabase link --project-ref <production-ref>
@@ -180,7 +181,23 @@ npx supabase db push
 npx supabase gen types typescript --linked > types/database.generated.ts
 ```
 
-Jangan menjalankan `db push` ke produksi tanpa persetujuan owner. CLI sesi ini tidak terautentikasi; repair riwayat preview dilakukan setelah verifikasi hash schema, bukan dengan mengulang SQL. Migrasi kategori Phase 3A sudah diterapkan ke preview dan dicatat sebagai versi `20261102091100`; produksi tetap belum menerima migrasi apa pun.
+Jangan menjalankan `db push` ke produksi tanpa persetujuan owner.
+
+### Riwayat penerapan preview
+
+| Versi | Cara dicatat | Alasan |
+| --- | --- | --- |
+| `20261102090000`–`20261102091100` (13 migrasi) | SQL Editor + `migration repair` | schema Phase 2 diterapkan manual sebelum tabel riwayat ada |
+| `20261103090000_product_import.sql` (3B) | `migration repair --status applied` | objeknya sudah ada di remote (diterapkan manual lebih dulu) |
+| `20261103110000_transaction_engine.sql` (4A) | `migration repair --status applied` | idem; menjalankan ulang SQL berisiko gagal pada objek existing |
+| `20261104100000_stock_opname_engine.sql` (5A) | `db push --linked` | benar-benar baru, diterapkan 4 November 2026 |
+| `20261105100000_stock_broadcast.sql` | `db push --linked` | benar-benar baru, diterapkan 4 November 2026 |
+
+`migration repair` hanya mencatat versi di `supabase_migrations.schema_migrations`; tidak menjalankan SQL. Sebelum repair 3B/4A, keberadaan objek dipastikan lewat probe REST: tabel `product_import_runs`/`product_import_rows` ada, RPC `begin_product_import`/`complete_sale`/`void_sale` membalas 401 (ada & terlindungi), sedangkan `stock_opnames.creation_key` membalas 400 `42703` (belum ada) — penanda 5A memang belum diterapkan.
+
+Verifikasi pasca-push: `migration list --linked` 16/16, `gen types typescript --linked` dibandingkan dengan `types/database.generated.ts` (24 tabel, nol drift kolom), 6 RPC opname membalas 401 saat tanpa sesi, data impor utuh (1.361 baris staging, 1.360 produk impor), dan Broadcast `stock_changed` benar-benar diterima klien pada channel privat `store:stock`.
+
+Migrasi kategori Phase 3A tercatat sebagai versi `20261102091100`; produksi tetap belum menerima migrasi apa pun.
 
 ## 7. Batasan dan Prasyarat Produksi
 
@@ -191,5 +208,5 @@ Jangan menjalankan `db push` ke produksi tanpa persetujuan owner. CLI sesi ini t
 - **Akun dan data uji** masih ada di preview; hapus/reset sebelum produksi.
 - `public.rls_auto_enable()` adalah fungsi event trigger platform yang dilaporkan advisor; bukan bagian migrasi ini. Tinjau sebelum produksi.
 - Fungsi `private` masih mewarisi EXECUTE dari `PUBLIC`; schema `private` tidak diekspos PostgREST, tetapi hardening grant dapat menjadi migrasi lanjutan.
-- `types/database.generated.ts` dihasilkan dari schema lokal; hasil generation hosted identik pada tingkat schema. Regenerasi file dari CLI hosted setelah akses CLI tersedia.
+- `types/database.generated.ts` dihasilkan dari schema lokal; generation hosted (`gen types --linked`) sudah dibandingkan dan identik pada tingkat tabel/kolom.
 - PGlite bukan Supabase; perbedaan perilaku PostgREST/GoTrue/Realtime tetap harus diuji pada project hosted (sudah dilakukan untuk Auth/RLS/RPC, bukan Realtime).

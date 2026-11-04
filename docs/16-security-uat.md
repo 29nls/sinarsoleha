@@ -3,8 +3,9 @@
 Phase 8 menutup proyek dengan dua hal yang bisa dikerjakan tanpa menyentuh
 database hosted: **audit keamanan yang dapat diulang** dan **checklist UAT**
 untuk owner, kasir, dan staf gudang. Tidak ada migrasi baru pada fase ini —
-migrasi Phase 5A masih menunggu persetujuan eksplisit untuk preview
-`ptbllrugrjepdhdhhdkzxn`, dan produksi tidak disentuh sama sekali.
+migrasi Phase 5A dan Broadcast Realtime sudah diterapkan ke preview
+`ptbllrugrjepdhdhhdkzxn` (4 November 2026), dan produksi tidak disentuh sama
+sekali.
 
 ## 1. Cara menjalankan ulang audit
 
@@ -112,15 +113,16 @@ yang memanggil RPC owner langsung dari konsol tetap ditolak (diuji hosted).
 
 ## 5. Checklist UAT
 
-Jalankan berurutan pada project preview setelah migrasi 5A disetujui. Setiap
-langkah dicatat: tanggal, akun, hasil, dan tangkapan layar bila gagal.
+Jalankan berurutan pada project preview; migrasi 5A + Realtime sudah diterapkan,
+jadi halaman opname dan badge stok Realtime bisa diuji. Setiap langkah dicatat:
+tanggal, akun, hasil, dan tangkapan layar bila gagal.
 
 ### 5.1 Persiapan
 
 - [ ] `npm run build` dan `npm run audit:bundle` bersih.
 - [ ] `npm run test:db` 83/83 dan `npm test` 251/251.
-- [ ] Migrasi 5A diterapkan ke preview **hanya** setelah
-      `APPROVE PHASE 5A MIGRATION TO PREVIEW`.
+- [x] Migrasi 5A + Broadcast diterapkan ke preview setelah persetujuan owner
+      (setara `APPROVE PHASE 5A MIGRATION TO PREVIEW`), 4 November 2026.
 - [ ] Tiga akun uji aktif: owner, kasir, staf gudang; satu akun nonaktif.
 - [ ] Katalog 1.360 produk terlihat; produk stok `NULL` tampil “—”.
 
@@ -189,8 +191,9 @@ langkah dicatat: tanggal, akun, hasil, dan tangkapan layar bila gagal.
 
 ## 6. Batasan yang harus disampaikan ke owner
 
-- **Migrasi 5A belum di preview.** Halaman opname/inventaris belum bisa diuji
-  hosted sampai persetujuan diberikan. Produksi belum menerima migrasi apa pun.
+- **Migrasi 5A sudah di preview, produksi belum.** Halaman opname/inventaris
+  dan Broadcast stok bisa diuji hosted; produksi belum menerima migrasi apa pun
+  dan masih menunggu prasyarat di bagian 6 serta persetujuan owner.
 - **Perangkat keras nyata belum diuji.** Printer diuji sebagai dialog browser;
   bridge thermal dan scanner fisik belum tersedia di lingkungan ini.
 - **QRIS dinamis tidak tersedia.** Build ini SPA tanpa server route; gateway
@@ -208,7 +211,7 @@ langkah dicatat: tanggal, akun, hasil, dan tangkapan layar bila gagal.
 ## 7. Definition of done Phase 8
 
 Phase 8 dinyatakan selesai bila: audit bundle bersih, grup I lulus, seluruh
-checklist di atas dieksekusi pada preview (setelah 5A disetujui), temuan
-diklasifikasikan (blocker / minor / catatan), dan owner menandatangani daftar
-batasan di bagian 6. Sampai saat itu status yang jujur adalah **“siap UAT,
-menunggu migrasi 5A”**.
+checklist di atas dieksekusi pada preview (migrasi 5A + Realtime sudah
+diterapkan), temuan diklasifikasikan (blocker / minor / catatan), dan owner
+menandatangani daftar batasan di bagian 6. Sampai checklist dijalankan, status
+yang jujur adalah **“siap UAT di preview”**.

@@ -101,6 +101,6 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 - Halaman ini tetap baca manual: Realtime `store:stock` hanya dipasang di
   layar kasir (`docs/18-realtime-stock.md`), jadi pengguna lain masih perlu
   "Muat ulang" untuk melihat movement terbaru di sini.
-- Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
-  `ptbllrugrjepdhhdkzxn`. Tanpa migrasi itu tabel ledger belum ada di hosted,
-  sehingga ketiga halaman hanya bisa diuji lokal. Produksi tidak disentuh.
+- Migrasi Phase 5A **sudah diterapkan ke preview** `ptbllrugrjepdhhdkzxn`
+  (4 November 2026), sehingga ketiga halaman bisa memuat ledger hosted.
+  Produksi tidak disentuh.

@@ -109,5 +109,5 @@ langsung dengan sesi non-owner.
 - Tidak ada filter pelaku, pencarian teks bebas, atau ekspor seluruh hasil.
 - Audit log tidak menampilkan `before_data` di CSV (hanya `after_data`) agar
   satu baris tetap satu record; snapshot sebelum tetap ada di detail layar.
-- Migrasi Phase 5A **masih menunggu approval** untuk preview
-  `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.
+- Migrasi Phase 5A **sudah diterapkan** ke preview `ptbllrugrjepdhdhhdkzxn`
+  (4 November 2026); produksi tidak disentuh.

@@ -106,16 +106,28 @@ Tes unit: `tests/stock.test.ts` (8 tes parsing/penerapan versi) dan satu tes
 store di `tests/cashier.test.mjs` (pesan lama ditolak, replay tidak
 mengembalikan angka, `resetStockVersions` membuka guard).
 
+## Status penerapan
+
+Migrasi `20261105100000_stock_broadcast.sql` **sudah diterapkan ke preview**
+`ptbllrugrjepdhdhhdkzxn` pada 4 November 2026 lewat `supabase db push --linked`
+(lihat `docs/03-database-implementation.md` bagian 6). Verifikasi hosted:
+
+- `supabase migration list --linked` menunjukkan 16/16 versi sinkron.
+- `gen types typescript --linked --schema realtime` memuat `realtime.send(jsonb, text, text, boolean)`
+  dan tabel `realtime.messages`, jadi trigger tidak akan jatuh ke cabang no-op.
+- Klien nyata (akun uji owner) berhasil `SUBSCRIBED` ke channel privat
+  `store:stock`, lalu menerima satu event `stock_changed` dengan payload
+  `{product_id, sku, stock_on_hand, stock_version}` setelah opname diposting.
+- Policy hanya mengizinkan role `authenticated`; tanpa sesi channel ditolak.
+
 ## Batasan
 
-- **Migrasi belum diterapkan ke preview.** Sama seperti Phase 5A, migrasi ini
-  menunggu persetujuan eksplisit; tanpa itu channel tidak ada di hosted dan
-  badge tetap “Stok manual”.
 - Hanya saldo yang disinkronkan. Nama, harga, kategori, dan status aktif baru
   terlihat setelah pencarian ulang — perubahan itu jarang dan tidak boleh
   mengubah harga di keranjang yang sedang berjalan.
 - Halaman inventaris (`/inventory`, movement, selisih) tetap baca manual;
   Realtime hanya dipasang di layar kasir karena di situlah keputusan jual
   dibuat.
-- Uji end-to-end dua browser belum dijalankan (butuh dua sesi hosted); yang
-  terverifikasi adalah SQL trigger, policy, dan logika klien.
+- Uji end-to-end dua browser belum dijalankan (butuh dua sesi hosted bersamaan);
+  yang terverifikasi adalah SQL trigger, policy, pengiriman Broadcast nyata ke
+  satu klien, dan logika klien.

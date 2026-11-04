@@ -139,5 +139,5 @@ RPC:
   dinamis sengaja belum diimplementasikan.
 - Perubahan flag memerlukan koneksi ke Supabase; saat gagal, UI menampilkan
   pesan dan semua adapter tetap OFF (tidak ada fallback "anggap aktif").
-- Migrasi Phase 5A masih menunggu approval untuk diterapkan ke preview
-  `ptbllrugrjepdhhdkzxn`; produksi tidak disentuh.
+- Migrasi Phase 5A sudah diterapkan ke preview `ptbllrugrjepdhhdkzxn`
+  (4 November 2026); produksi tidak disentuh.
