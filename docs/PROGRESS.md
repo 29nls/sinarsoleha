@@ -1864,3 +1864,10 @@ produk. Hasilnya 12 baris tabel, `sidik_katalog`
 jari berubah menjadi `08e8e4455c99198c0de593e58b7b60f9` — query pembanding tidak
 bisa lolos diam-diam saat isi katalog berbeda. Angka ini dari fixture, bukan dari
 produksi; yang dibuktikan adalah query-nya benar, bukan restore-nya sudah lulus.
+
+Satu cacat ketemu saat menguji kasus batas: pada tabel kosong `string_agg`
+mengembalikan `NULL`, dan dua `NULL` akan dianggap "sama", sehingga dua project
+kosong bisa lulus uji restore palsu. Dibuktikan dengan skrip terpisah (23
+migrasi, tabel kosong → `sidik_katalog: null`), lalu query di §5.5 diberi
+`coalesce(..., 'KOSONG')` dan kriteria lulusnya menuntut `produk = 1.361`, bukan
+nol.

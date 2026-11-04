@@ -428,14 +428,24 @@ berbeda, walaupun jumlah barisnya sama:
 select count(*) as produk,
        count(*) filter (where stock_on_hand is not null) as berstok,
        coalesce(sum(sale_price), 0) as total_harga_jual,
-       md5(string_agg(sku || ':' || coalesce(sale_price::text, '-'), ',' order by sku)) as sidik_katalog
+       coalesce(
+         md5(string_agg(sku || ':' || coalesce(sale_price::text, '-'), ',' order by sku)),
+         'KOSONG'
+       ) as sidik_katalog
   from public.products;
 ```
 
 Kriteria lulus: kedua tabel **identik baris per baris** dan `sidik_katalog`
-sama persis. Bila `audit_logs` berbeda satu atau dua baris, periksa apakah itu
-aksi yang terjadi setelah backup diambil — selisih yang bisa dijelaskan bukan
-kegagalan; selisih yang tidak bisa dijelaskan adalah kegagalan.
+sama persis — dengan satu syarat yang mudah terlewat: **`produk` harus 1.361,
+bukan 0.** Pada tabel kosong `string_agg` menghasilkan `NULL`, dan dua `NULL`
+akan tampak "cocok" padahal tidak ada yang dibuktikan; karena itu query di atas
+memakai `coalesce(..., 'KOSONG')` supaya keadaan itu terlihat sebagai teks, bukan
+sebagai ketiadaan. Angka `produk = 0` berarti backup diambil sebelum D4: tunggu
+backup berikutnya, jangan dianggap lulus.
+
+Bila `audit_logs` berbeda satu atau dua baris, periksa apakah itu aksi yang
+terjadi setelah backup diambil — selisih yang bisa dijelaskan bukan kegagalan;
+selisih yang tidak bisa dijelaskan adalah kegagalan.
 
 Satu hal yang tidak boleh dilakukan saat membandingkan: **jangan menulis query
 pembanding di produksi setelah toko mulai berjualan.** Transaksi, movement, dan
