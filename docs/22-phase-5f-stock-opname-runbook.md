@@ -55,7 +55,7 @@ frasa itu, pekerjaan berhenti pada langkah persiapan read-only.
 | --- | --- | --- |
 | 4.1 | Konfirmasi 23/23 migrasi | `npx supabase migration list --linked` |
 | 4.2 | Konfirmasi 0 fixture `TEST-*`/`HOST-*` aktif | query `products` |
-| 4.3 | Konfirmasi 2 `inventory_staff` aktif | query `profiles` |
+| 4.3 | Konfirmasi 2 `inventory_staff` aktif | `npm run test:hosted:opname:staff-b` |
 | 4.4 | Regresi read-only | `npm run test:hosted:opname` → 11/11 |
 | 4.5 | Catat baseline saldo | `stock_on_hand`, `stock_version`, jumlah movement |
 | 4.6 | Sepakati daftar alasan selisih | rusak, hilang, salah input, keluar/masuk tanpa catatan, konversi satuan, lainnya |
@@ -87,6 +87,28 @@ tampak bersih padahal tidak.
 
 Angka ini adalah pembanding, bukan target. Setelah posting, selisih yang sah
 hanya boleh muncul pada item yang memang dihitung berbeda.
+
+### Verifikasi staf B
+
+`npm run test:hosted:opname:staff-b` membaca kredensial staf B dari
+`.tmp/phase5f-staff-b.json` (gitignored, tidak pernah dikomit):
+
+```json
+{ "email": "…", "password": "…" }
+```
+
+Skrip ini read-only dan memeriksa delapan hal: kredensial bisa login, profil
+`inventory_staff` aktif, ada dua staf aktif yang berbeda, staf B bisa membaca
+permukaan opname, staf B hanya melihat profilnya sendiri, staf B ditolak
+`approve`/`post`/`cancel`, sesi staf A dan B berbeda, dan tidak ada baris yang
+berubah. Exit code 1 selama staf B belum ada.
+
+Probe penolakan memakai UUID nol. Setiap RPC owner-only memanggil
+`private.require_active_role(array['owner'])` sebagai statement pertama, sebelum
+mencari baris, sehingga staf ditolak tanpa lookup dan tanpa tulis.
+
+Selama staf B belum ada, hasilnya **1 passed, 7 failed** — hanya tes "tidak
+menulis" yang lulus. Itu perilaku yang benar, bukan kegagalan skrip.
 
 ## 5. Urutan eksekusi
 
@@ -191,6 +213,7 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Fixture aktif | 0 — diverifikasi ulang |
 | Baseline §4.5 | selesai — lihat tabel di atas |
 | Regresi read-only | 11/11 lulus |
+| Verifikasi staf B | siap — `npm run test:hosted:opname:staff-b` (kini 1/8) |
 | Staf B | **belum ada** — blocker |
 | Gate Phase 5F | belum diminta |
 | Sesi opname nyata | belum dibuat |

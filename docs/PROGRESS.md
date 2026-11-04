@@ -1467,5 +1467,10 @@ regresi `npm run test:hosted:opname` 11/11. Baseline 4 November 2026 dicatat:
 1.409 produk (1.361 aktif), 1.374 stok `NULL`, 104 movement, 58 sesi, 2.802
 opname item, dan 13 `stock_discrepancy_logs`.
 
+Verifikasi staf B disiapkan sebagai `npm run test:hosted:opname:staff-b`
+(`scripts/opname-staff-b-readiness.mjs`): read-only, delapan pemeriksaan, dan
+menolak jalan bila target bukan preview. Selama akun belum ada hasilnya 1/8
+dengan exit code 1 — hanya pemeriksaan "tidak menulis" yang lulus.
+
 Belum ada sesi opname nyata yang dibuat, belum ada posting, dan produksi tidak
 disentuh. Pekerjaan tetap menunggu staf B.
