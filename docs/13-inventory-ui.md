@@ -108,3 +108,7 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 - Migrasi Phase 5A **sudah diterapkan ke preview** `ptbllrugrjepdhhdkzxn`
   (4 November 2026), sehingga ketiga halaman bisa memuat ledger hosted.
   Produksi tidak disentuh.
+- Phase 5D memvalidasi ketiga halaman lewat browser E2E: saldo baru muncul di
+  `/inventory`, histori memuat baris "Saldo awal", dan laporan selisih hanya
+  menampilkan penyesuaian nyata (saldo awal tidak dianggap selisih). Rincian di
+  `docs/19-inventory-hosted-validation.md`.

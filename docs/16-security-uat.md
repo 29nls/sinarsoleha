@@ -11,12 +11,14 @@ sekali.
 
 | Perintah | Yang diperiksa |
 | --- | --- |
-| `npm run test:db` | 88 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
+| `npm run test:db` | 94 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
 | `npm run build` lalu `npm run audit:bundle` | Output build tidak memuat service-role key, secret key Supabase, atau JWT `service_role`. |
 | `npm test` | 257 unit test klien (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok). |
 | `npm run test:e2e` | Alur kasir di Chromium + NFR-04 dua browser (butuh dev server/preview dan akun uji). |
 | `npm run test:hosted` | Auth/RLS/RPC nyata di preview (butuh `.env` dan akun uji). |
 | `npm run test:hosted:transactions` | Konkurensi, idempotensi, void, dan rekonsiliasi pembayaran di preview. |
+| `npm run test:hosted:inventory` | Opname Phase 5D di preview: fixture `TEST-OPN-*`, konflik versi, posting paralel, Realtime, rekonsiliasi. |
+| `npm run test:e2e:inventory` | E2E browser opname dengan konteks owner, staf, dan kasir terpisah. |
 
 `audit:bundle` sengaja dibuat sempit agar tidak menghasilkan alarm palsu:
 literal `sb_secret_`/`sb_publishable_` di dalam `@supabase/supabase-js` adalah
@@ -44,7 +46,7 @@ Pencarian di `app/` tidak menemukan:
 - `user_metadata` — otorisasi hanya memakai `profiles.role` + `is_active`.
 - `service_role`, `localStorage`, `innerHTML`, `v-html`, `eval(`.
 - `.insert()`, `.update()`, `.upsert()`, `.delete()` langsung ke tabel. Semua
-  penulisan melewati 18 RPC `public.*`; satu-satunya `.update(` adalah
+  penulisan melewati RPC `public.*`; satu-satunya `.update(` adalah
   `search.update(value)` pada input pencarian kasir.
 - Redirect login memakai `safeRedirect()` yang hanya menerima path internal
   (`/…`, bukan `//…`), sehingga tidak bisa dipakai open redirect.

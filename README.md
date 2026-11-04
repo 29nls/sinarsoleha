@@ -11,7 +11,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
 | 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1.361/1.361 baris impor masuk** |
 | 4 | Mesin transaksi (4A), UI kasir (4B), riwayat/void (4C), validasi hosted & E2E (4D) | **4A–4D selesai (preview); checkout aktif; produksi belum diterapkan** |
-| 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C) | **5A–5C selesai & diuji; migrasi 5A sudah di preview** |
+| 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C), validasi hosted (5D) | **5A–5D selesai & diuji hosted; 20/20 migrasi di preview** |
 | 6 | Laporan penjualan, per produk, exception data, ekspor CSV | **Selesai & diuji lokal** |
 | 7 | Plugin opsional: printer, scanner, gateway QRIS, halaman pengaturan | **Selesai & diuji lokal** |
 | 8 | Keamanan & UAT | **Audit selesai; UAT hosted siap dijalankan di preview** — lihat `docs/16-security-uat.md` |
@@ -35,9 +35,11 @@ Phase 5B menambah UI opname di `/stock-opname`: daftar sesi dengan filter status
 
 Phase 5C menambah halaman inventaris baca-saja di `/inventory`: saldo stok per produk dengan filter saldo belum diketahui/negatif/kosong, histori pergerakan stok (`/inventory/movements`) dengan filter jenis dan rentang tanggal, serta laporan selisih opname (`/inventory/discrepancies`) dengan filter alasan. Ketiganya memakai `capability: inventory.read`, tidak menambah RPC atau migrasi, dan menampilkan saldo `NULL` sebagai “—” (bukan nol). Rincian ada di `docs/13-inventory-ui.md`.
 
+Phase 5D memvalidasi mesin dan UI inventaris pada project preview: suite hosted 24/24 (saldo awal positif dan nol, no-change/naik/turun, penegakan alasan, konflik versi, posting paralel dua klien owner, Broadcast Realtime, snapshot 1.361 item dalam 113 ms) dan E2E browser 17/17 dengan tiga konteks terpisah. Audit menemukan cacat nyata: setelah konflik versi, snapshot tidak pernah di-refresh sehingga sesi tidak akan pernah bisa diposting ulang. Migrasi `20261106130000` memperbaikinya dengan me-rebase snapshot saat recount. 1.361 produk impor tetap berstok `NULL` dan tidak menerima satu movement pun — lihat `docs/19-inventory-hosted-validation.md`.
+
 Phase 7 menambahkan tiga integrasi opsional di balik satu kontrak adapter: printer thermal (fallback dialog browser), barcode scanner keyboard-wedge, dan gateway QRIS yang secara jujur dilaporkan tidak tersedia pada build SPA ini. Halaman `/settings` (owner-only) mengatur flag dan `public_config` non-rahasia lewat RPC yang sudah ada; tidak ada migrasi baru. Semua plugin default nonaktif dan checkout, pencarian manual, serta QRIS manual tetap berjalan tanpa perangkat apa pun — lihat `docs/15-plugins-settings.md`.
 
-Phase 8 menutup dengan audit keamanan yang dapat diulang dan checklist UAT per peran: `npm run audit:bundle` memindai output build untuk service-role/secret key, dan grup I pada `npm run test:db` mengunci grant tabel, RLS 24/24, `SECURITY DEFINER` + `search_path=""`, serta default privilege. Temuan residual EXECUTE bawaan pada fungsi trigger kini dicabut oleh migrasi `20261106110000_private_function_grants.sql`, yang sudah diterapkan ke preview dan diverifikasi dengan 10 probe peran (18/18 migrasi sinkron). UAT hosted sudah dijalankan: NFR-04 terukur **899 ms** untuk dua browser (budget 2.000 ms) lewat `e2e/nfr04-stock-latency.spec.mjs` — lihat `docs/16-security-uat.md`.
+Phase 8 menutup dengan audit keamanan yang dapat diulang dan checklist UAT per peran: `npm run audit:bundle` memindai output build untuk service-role/secret key, dan grup I pada `npm run test:db` mengunci grant tabel, RLS 24/24, `SECURITY DEFINER` + `search_path=""`, serta default privilege. Temuan residual EXECUTE bawaan pada fungsi trigger kini dicabut oleh migrasi `20261106110000_private_function_grants.sql`, yang sudah diterapkan ke preview dan diverifikasi dengan 10 probe peran (20/20 migrasi sinkron). UAT hosted sudah dijalankan: NFR-04 terukur **899 ms** untuk dua browser (budget 2.000 ms) lewat `e2e/nfr04-stock-latency.spec.mjs` — lihat `docs/16-security-uat.md`.
 
 Phase 6 menambah halaman laporan owner-only: ringkasan harian dan rincian pendapatan per nota (`/reports`), penjualan per produk dari snapshot baris transaksi (`/reports/products`), serta exception data katalog dan transaksi legacy (`/reports/exceptions`). Tidak ada tabel agregat, RPC, atau migrasi baru — baris dibaca dengan RLS lalu diringkas di klien, dibatasi 5000 baris per periode dan ditandai bila terpotong. CSV dibuat di browser dengan BOM UTF-8. Margin/laba kotor tidak disajikan karena harga beli historis belum lengkap (PRD §5.5). Rincian ada di `docs/14-reports.md`.
 
@@ -69,6 +71,8 @@ Tanpa kredensial Supabase, aplikasi tetap berjalan tetapi halaman login menampil
 | `npm run audit:bundle` | Pindai output build untuk service-role/secret key (jalankan setelah `npm run build`) |
 | `npm run test:hosted` | Uji Auth/RLS/RPC ke project preview (butuh akun uji lokal) |
 | `npm run test:hosted:transactions` | Uji transaksi Phase 4A di preview (butuh fixture stok dan kasir kedua) |
+| `npm run test:hosted:inventory` | Uji opname Phase 5D di preview (fixture `TEST-OPN-*`, konkurensi, Realtime) |
+| `npm run test:e2e:inventory` | E2E browser stok opname (owner, staf, kasir dalam konteks terpisah) |
 | `npm run gen:types` | Regenerasi `types/database.generated.ts` dari schema |
 | `npm run import:products` | Dry-run impor master produk; `--apply` hanya setelah persetujuan owner |
 

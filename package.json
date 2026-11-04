@@ -12,7 +12,9 @@
     "test:db": "node scripts/db-test.mjs",
     "test:hosted": "node scripts/hosted-smoke.mjs",
     "test:hosted:transactions": "node scripts/transaction-hosted-smoke.mjs",
+    "test:hosted:inventory": "node scripts/inventory-hosted-smoke.mjs --execute",
     "test:e2e": "playwright test",
+    "test:e2e:inventory": "playwright test e2e/stock-opname.spec.mjs",
     "audit:bundle": "node scripts/audit-bundle.mjs",
     "gen:types": "node scripts/gen-types.mjs",
     "import:products": "node scripts/product-import.mjs"

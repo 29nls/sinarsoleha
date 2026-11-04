@@ -1188,3 +1188,48 @@ mengembalikan baris terbatas. Produksi tetap belum menerima migrasi apa pun.
 | Katalog | 1.373 produk, 0 dengan jual < beli |
 
 Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugrjepdhdhhdkzxn`.
+
+## 4 November 2026 — Phase 5D (validasi inventaris hosted)
+
+### Lingkup
+
+- Audit read-only repo + preview: 20/20 migrasi sinkron (setelah 0020), 9 RPC inventaris/transaksi tersedia, 5 akun uji sesuai peran, katalog 1.373 produk dengan 1.369 stok `NULL`.
+- Jejak hosted menunjukkan `opname_adjustment` 0, `stock_discrepancy_logs` 0, dan `post_conflict` 0 — jalur penyesuaian, log selisih, dan konflik versi belum pernah berjalan.
+- Audit menemukan cacat mesin 5A: `stock_version_snapshot` tidak pernah di-refresh, sehingga sesi yang kena konflik tidak akan pernah bisa diposting ulang (tes F2 berhenti di `approved`).
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi | `supabase/migrations/20261106130000_opname_recount_rebase.sql` (0020) |
+| Suite hosted | `scripts/inventory-hosted-smoke.mjs` |
+| E2E | `e2e/stock-opname.spec.mjs` |
+| Dokumentasi | `docs/19-inventory-hosted-validation.md` |
+
+### File dimodifikasi
+
+- `scripts/db-test.mjs` — tes F3 (recount me-rebase snapshot, post berhasil, tanpa drift ledger); total 94.
+- `package.json` — `test:hosted:inventory`, `test:e2e:inventory`.
+- `docs/11`, `docs/12`, `docs/13`, `docs/16`, `README.md` — status, angka tes, dan temuan 5D.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **94/94** |
+| `npm test` | 257/257 |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (18,3 detik) |
+| `npm run audit:bundle` | 0 temuan |
+| `npm run test:hosted:inventory` | **24/24** |
+| `npm run test:e2e:inventory` | **17/17** |
+| `migration list --linked` | **20/20** |
+| Snapshot seluruh katalog | 1.361 item dalam 113–114 ms (dibatalkan, tidak diposting) |
+| Posting paralel | `overlap=true`, `posted` + `already_posted`, satu movement, satu audit |
+| Produk impor | 1.361 tetap `NULL`, 0 movement |
+
+### Temuan tersisa
+
+- Detail opname seluruh katalog terpotong 1.000 baris oleh PostgREST.
+- Dialog recount menampilkan snapshot lama setelah konflik (meminta alasan yang dibuang server).
+- Fixture `TEST-OPN-*` menumpuk di preview dan harus dibersihkan sebelum produksi.

@@ -2150,6 +2150,79 @@ async function runOpnameTests() {
     assert(approved.status === 'approved', 're-approval after recount failed')
   })
 
+  await test('F3 — recount rebases the snapshot and posts without ledger drift', async () => {
+    const productId = await opnameProduct('OPN-F3', { stock: 30 })
+    const session = await createOpname({ product_ids: [productId] })
+    const item = await opnameItem(session.opname_id, productId)
+    await countItem(item.id, 25, 'missing', null)
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+
+    // A sale after the snapshot: 30 -> 25, version 1.
+    await asRoleCommit('authenticated', CASHIER, async () => {
+      await db.query('select public.complete_sale($1::jsonb) as r', [
+        JSON.stringify(cashPayload(productId, 5, 25000)),
+      ])
+    })
+
+    const conflict = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(conflict.result === 'version_conflict', 'conflict was not detected')
+
+    // Recount against the stock the system holds now (25), not the pre-sale
+    // snapshot (30). Before 0020 this left the snapshot at 30/0, so every later
+    // post conflicted again and the recount loop could never finish.
+    await countItem(item.id, 24, 'missing', null)
+
+    const refreshed = await db.query(
+      `select system_qty_snapshot, stock_version_snapshot, difference_qty, count_status
+         from public.stock_opname_items where id = $1`,
+      [item.id],
+    )
+    assert(Number(refreshed.rows[0].system_qty_snapshot) === 25, 'recount did not rebase the system quantity')
+    assert(Number(refreshed.rows[0].stock_version_snapshot) === 1, 'recount did not rebase the stock version')
+    assert(Number(refreshed.rows[0].difference_qty) === -1, 'difference used the stale snapshot')
+    assert(refreshed.rows[0].count_status === 'counted', 'recount did not clear needs_recount')
+
+    await rpcAs('authenticated', OWNER, 'select public.submit_stock_opname($1) as r', [session.opname_id])
+    await rpcAs('authenticated', OWNER, 'select public.approve_stock_opname($1) as r', [session.opname_id])
+    const posted = await rpcAs('authenticated', OWNER, 'select public.post_stock_opname($1) as r', [
+      session.opname_id,
+    ])
+    assert(posted.result === 'posted', `recount post failed: ${posted.result}`)
+    assert(Number(posted.delta_total) === -1, 'posted delta is wrong')
+
+    const state = await productState(productId)
+    assert(Number(state.stock_on_hand) === 24, 'stock after recount post is wrong')
+    assert(Number(state.stock_version) === 2, 'stock version after recount post is wrong')
+
+    const movements = await db.query(
+      `select movement_type, quantity_delta, quantity_before, quantity_after
+         from public.stock_movements where product_id = $1 order by id`,
+      [productId],
+    )
+    assert(movements.rows.length === 2, `expected a sale and an adjustment, got ${movements.rows.length}`)
+    const adjustment = movements.rows.find((row) => row.movement_type === 'opname_adjustment')
+    assert(adjustment, 'opname_adjustment missing')
+    assert(Number(adjustment.quantity_before) === 25, 'ledger before is stale')
+    assert(Number(adjustment.quantity_delta) === -1, 'ledger delta is stale')
+    assert(Number(adjustment.quantity_after) === 24, 'ledger after is wrong')
+
+    const sum = movements.rows.reduce((total, row) => total + Number(row.quantity_delta), 0)
+    assert(30 + sum === 24, `ledger drift: start 30 + ${sum}`)
+
+    const logs = await db.query(
+      `select system_qty, physical_qty, difference_qty, revision
+         from public.stock_discrepancy_logs where stock_opname_item_id = $1`,
+      [item.id],
+    )
+    assert(logs.rows.length === 1, 'expected exactly one discrepancy log')
+    assert(Number(logs.rows[0].system_qty) === 25, 'discrepancy log kept the stale system quantity')
+    assert(Number(logs.rows[0].difference_qty) === -1, 'discrepancy log delta is wrong')
+    assert(Number(logs.rows[0].revision) === 1, 'discrepancy revision is wrong')
+  })
+
   // ===== GROUP G — IMMUTABILITY =====
 
   await test('G1 — posted sessions, items, movements and logs are immutable', async () => {

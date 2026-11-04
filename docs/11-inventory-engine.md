@@ -7,7 +7,7 @@ menulis `products.stock_on_hand`.
 
 - Migrasi: `supabase/migrations/20261104100000_stock_opname_engine.sql`
 - Tes: `scripts/db-test.mjs` (grup A–H), `npm run test:db`
-- Status: **lokal lulus 72/72; sudah diterapkan ke preview 4 November 2026; UI (5B) menyusul**
+- Status: **lokal lulus 94/94; terpasang di preview (20/20 migrasi); divalidasi hosted + E2E browser pada Phase 5D**
 
 ## 1. Prinsip arsitektur
 
@@ -195,6 +195,17 @@ Skenario: kasir menjual produk setelah snapshot dibuat.
   tidak berkonflik **tidak** ikut diposting (F1 memverifikasi keduanya).
 - Setelah recount, sesi dapat di-submit dan di-approve ulang (F2).
 
+**Perbaikan 0020 — rebase snapshot saat recount.** Sebelum
+`20261106130000_opname_recount_rebase.sql`, `stock_version_snapshot` tidak pernah
+di-refresh: posting ulang selalu melihat versi lama dan mengembalikan
+`version_conflict` lagi tanpa akhir. Sekarang `record_stock_opname_count` membaca
+ulang `products.stock_on_hand` dan `stock_version` ketika item berstatus
+`needs_recount`, lalu menulis kedua snapshot itu bersama hasil hitung. Selisih
+dihitung terhadap stok sistem terbaru, sehingga `quantity_before` pada movement
+tidak pernah memakai angka pra-penjualan (tidak ada drift ledger). Tes F3
+mengunci kasus 30 → jual 5 → 25 → recount 24: movement `-1`, `before = 25`,
+ledger berakhir di 24, satu log selisih dengan `system_qty = 25`.
+
 ## 8. Cancel — `public.cancel_stock_opname(p_opname_id, p_reason)`
 
 Owner saja, alasan wajib (≤500 karakter). Sesi `posted` tidak dapat dibatalkan;
@@ -221,7 +232,7 @@ tetap wajib punya `submitted_at`.
 
 ## 10. Hasil tes lokal
 
-`npm run test:db` — **72/72 lulus** (42 tes Phase 1–4 + 30 tes Phase 5A):
+`npm run test:db` — **94/94 lulus** (42 tes Phase 1–4 + 52 tes Phase 5A/5D):
 
 | Grup | Tes |
 | --- | --- |
@@ -230,11 +241,17 @@ tetap wajib punya `submitted_at`.
 | C — count | qty negatif, presisi, alasan wajib, `other` wajib catatan, opening balance wajib alasan+catatan, qty 0, aktor tercatat, recount |
 | D — approval | submit tidak lengkap, `needs_recount`, approval tanpa mengubah stok |
 | E — posting | kenaikan, penurunan, no-change, opening positif, opening nol, delta 0 ditolak untuk tipe lain, idempotensi + satu audit |
-| F — konflik | dua sesi (opname + penjualan), penanda konflik tersimpan, tidak ada posting sebagian |
+| F — konflik | dua sesi (opname + penjualan), penanda konflik tersimpan, tidak ada posting sebagian, dan recount yang me-rebase snapshot lalu berhasil diposting tanpa drift |
 | G — immutability | sesi posted/cancelled final, movement & log tidak dapat diubah/dihapus, update stok langsung ditolak |
 | H — skala & replay | snapshot 1.406 produk dalam satu statement (168 ms), replay submit/approve idempoten tanpa duplikasi audit |
 
-Perintah lain: `npm test` 83/83, `npm run typecheck` exit 0, `npm run build` exit 0.
+Perintah lain: `npm test` 257/257, `npm run typecheck` exit 0, `npm run build` exit 0.
+
+Validasi hosted Phase 5D (preview): 24/24 tes API dan 17/17 skenario browser —
+lihat `docs/19-inventory-hosted-validation.md`. Catatan yang muncul dari fase itu:
+pembacaan detail opname masih dibatasi 1.000 baris oleh PostgREST, sehingga sesi
+seluruh katalog hanya menampilkan sebagian item di UI meski snapshot database
+lengkap.
 
 Tes memakai produk sintetis `OPN-*` dan fixture `TEST-TXN-*`; **tidak ada**
 stok 1.360 produk impor yang diubah dan tidak ada saldo awal nyata yang
@@ -264,5 +281,7 @@ Risiko/pekerjaan terbuka:
   opname saldo awal.
 - Keputusan bisnis: siapa boleh membatalkan draf milik staff, apakah staff boleh
   melihat seluruh sesi atau hanya miliknya, dan kebijakan recount berulang.
-- Konkurensi multi-sesi nyata (PostgREST) belum diuji; jaminan berasal dari
-  `FOR UPDATE` + perbandingan versi, diuji secara logis di PGlite.
+- Konkurensi multi-sesi nyata sudah diuji di hosted (Phase 5D): dua klien owner
+  memposting sesi yang sama secara bersamaan menghasilkan tepat satu posting dan
+  satu audit, dengan permintaan yang benar-benar tumpang tindih. Jaminan tetap
+  berasal dari `FOR UPDATE` + perbandingan versi.

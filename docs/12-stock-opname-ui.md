@@ -10,7 +10,7 @@ perubahan stok tetap terjadi di database; UI hanya memanggil RPC.
 - Composable: `app/composables/useOpnameList.ts`, `app/composables/useOpnameDetail.ts`
 - Komponen: `app/components/opname/*.vue`
 - Tes: `tests/opname.test.ts`, `tests/opname-service.test.ts`, `tests/opname-queries.test.ts`
-- Status: **selesai & diuji; migrasi 5A sudah diterapkan ke preview**
+- Status: **selesai & diuji; migrasi 5A + perbaikan recount 0020 sudah di preview; E2E browser 17/17 lulus (Phase 5D)**
 
 ## 1. Alur pengguna
 
@@ -78,9 +78,9 @@ ketiganya owner-only di database; ini hanya affordance, bukan kontrol keamanan.
 - **Migrasi Phase 5A sudah diterapkan ke preview** (`ptbllrugrjepdhhdkzxn`)
   pada 4 November 2026, jadi halaman bisa memuat data nyata. Produksi tidak
   disentuh.
-- **Belum ada E2E browser hosted** untuk opname. Yang ada saat ini unit test,
-  `typecheck`, `build`, ditambah verifikasi alur opname lewat SDK ke preview
-  (create → count → submit → approve → post) yang memicu Broadcast stok.
+- **E2E browser hosted sudah ada** (`e2e/stock-opname.spec.mjs`, `npm run test:e2e:inventory`): 17 skenario dengan tiga konteks terpisah — kasir ditolak, staf membuat/menghitung/mensubmit, owner menyetujui/memposting, saldo dan histori di `/inventory`, laporan selisih, sesi terposting tidak dapat diedit, sesi dibatalkan tidak mengubah stok, dan konflik versi muncul sebagai panel recount. Rincian di `docs/19-inventory-hosted-validation.md`.
+- **Snapshot di dialog recount bisa basi.** Setelah konflik, halaman masih menampilkan `system_qty_snapshot` lama (mis. 13 padahal sistem sudah 12), sehingga dialog meminta alasan untuk selisih yang akan dibuang server saat rebase. Aman secara data, tetapi membingungkan operator.
+- **Sesi seluruh katalog terpotong di UI.** `getOpnameDetail` mengambil semua item tanpa paginasi; PostgREST membatasi 1.000 baris, jadi sesi 1.361 item hanya menampilkan 1.000 baris dan hitungan `pending`/`selisih` ikut salah. Snapshot di database tetap lengkap.
 - **Posting bersifat final** dan belum ada pembalik (reversal); koreksi
   dilakukan lewat sesi opname baru.
 - **Tanpa Realtime**: dua operator yang membuka sesi sama tidak saling melihat
