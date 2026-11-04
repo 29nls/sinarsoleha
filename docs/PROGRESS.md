@@ -1691,3 +1691,86 @@ ulang dari repo. Itu jaminan yang lebih penting daripada satu database hidup,
 dan sekarang bisa dijalankan siapa pun tanpa Docker.
 
 Regresi: vitest 288/288, typecheck bersih.
+
+## 4 November 2026 — Tahap 1 repo: CI, replay bersih, dokumen jujur
+
+### Lingkup
+
+Lima butir perbaikan repo yang tidak butuh frasa gate owner. Tidak ada
+perubahan skema, tidak ada tes hosted, tidak ada sentuhan ke produksi.
+
+### File dibuat
+
+| File | Isi |
+| --- | --- |
+| `.github/workflows/ci.yml` | 9 langkah, tanpa `secrets.` dan tanpa tes hosted |
+| `docs/24-production-cutover-runbook.md` | Runbook D1–D6 + D1a/D1b, prosedur akun, prosedur kata sandi, keputusan backup |
+| `scripts/import-review-resolve.mjs` | Penyelesaian baris review lewat sesi owner: baca sisa review, panggil RPC, impor baris, tutup run |
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `scripts/migration-replay.mjs` | Impor `@electric-sql/pglite` + `/contrib/pg_trgm` dari paket, bukan `.tmp/pgtool/` |
+| `vitest.config.ts` | Kecualikan `**/.tmp/**` supaya clone uji tidak dipindai Vitest |
+| `docs/16-security-uat.md` | 101 tes DB, 288 unit/22 berkas, baris `db:replay`, CSP/HSTS aktif, rate limit terbukti |
+| `docs/17-users-audit.md` | Prosedur tambah staf: `is_active=false`, Auto Confirm, `activated_at` |
+| `docs/23-go-live-roadmap.md` | C1 dikoreksi, D1a/D1b ditambah, D4 1.360+1 review + `npm run import:review`, §8 diperluas |
+| `docs/06-product-master-import.md` | §13 menjelaskan RPC tidak bisa dari SQL Editor + alur skrip yang benar |
+| `package.json` | Script `import:review` |
+
+### Perintah yang dijalankan
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run db:replay` | 23/23 migrasi, 9/9 invarian, exit 0 |
+| Uji balik SQL rusak | `99999999999999_zz_broken_probe.sql` → 23/24, exit **1**; berkas dihapus, direktori kembali 23 |
+| `npm run typecheck` | exit 0 |
+| `npm test` | 288/288, 22 berkas, exit 0 |
+| `npm run test:db` | 101/101, exit 0 |
+| `npm run build` | 1,92 MB (474 kB gzip), exit 0 |
+| `npm run audit:bundle` | 151 berkas, 0 temuan |
+| Rantai CI di `.tmp/clean-clone` | clone bersih → `npm ci` → 7 perintah, semuanya exit 0 |
+
+### Temuan
+
+`npm test` sempat gagal 3 berkas (576 tes lulus, 3 suite error) karena Vitest
+memindai `.tmp/clean-clone/e2e/*.spec.mjs` — berkas Playwright, bukan Vitest.
+Diperbaiki dengan menambah `**/.tmp/**` ke `exclude`; setelah itu 22 berkas /
+288 tes, sama seperti yang diklaim dokumen. Tanpa perbaikan ini CI akan merah
+begitu ada clone uji di dalam repo.
+
+Angka impor yang beredar perlu dibedakan: satu kali `--apply` menghasilkan
+**1.360 imported + 1 review** (`WAL-W1303`), bukan 1.361/1.361. Angka 1.361
+adalah hasil akhir setelah review diselesaikan lewat
+`resolve_product_import_review`. `docs/23` D4 dan `docs/24` §6.3 sudah dikoreksi.
+
+`disable_signup` di preview tetap `true` dan probe `POST /auth/v1/signup`
+menjawab `422 signup_disabled`, sementara `supabase config diff` masih melaporkan
+`auth.email.enable_signup` remote `true`. Keduanya toggle berbeda; `config push`
+penuh tetap dilarang karena akan menimpa `site_url` ke `127.0.0.1`.
+
+Dua cacat ditemukan saat menulis ulang `docs/24` §6.4, keduanya akan
+menggagalkan cutover bila diikuti apa adanya:
+
+1. `resolve_product_import_review` tidak bisa dipanggil dari SQL Editor. Fungsi
+   memakai `private.require_active_role` → `auth.uid()`; di SQL Editor nilainya
+   `NULL` sehingga hasilnya `AUTH_REQUIRED`. Pemanggilan harus lewat sesi owner
+   dengan publishable key.
+2. `product-import.mjs --apply` **bukan** cara menutup baris review. Skrip itu
+   men-staging ulang seluruh workbook, dan `stage_product_import_rows` menimpa
+   baris yang `product_id`-nya masih `NULL`. Koreksi harga owner akan kembali
+   menjadi `review` dan run tidak pernah selesai.
+
+Karena itu ditambahkan `scripts/import-review-resolve.mjs` (`npm run
+import:review`): mode tanpa argumen membaca sisa baris review, mode berargumen
+memanggil RPC, mengimpor baris itu lewat `import_product_import_row`, lalu
+menutup run dengan `finish_product_import` bila tidak ada sisa `ready`.
+Diverifikasi di preview: login owner dikenali, target URL dicek, dan percobaan
+ulang pada baris 1305 yang sudah diimpor ditolak `ROW_ALREADY_IMPORTED` — bukti
+RPC benar-benar berjalan dengan `auth.uid()` terisi.
+
+### Status
+
+Tahap 1 (repo) selesai. Tahap 2 (empat pertanyaan owner), Tahap 3 (gate Phase
+5F), dan Tahap 4 (produksi) belum dimulai.

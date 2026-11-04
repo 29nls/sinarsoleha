@@ -18,6 +18,8 @@
  *   node scripts/migration-replay.mjs
  *   node scripts/migration-replay.mjs --verbose
  */
+import { PGlite } from '@electric-sql/pglite'
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -60,14 +62,9 @@ as $$
 $$;
 `
 
-const { PGlite } = await import('../.tmp/pgtool/node_modules/@electric-sql/pglite/dist/index.js')
-const { pg_trgm } = await import(
-  '../.tmp/pgtool/node_modules/@electric-sql/pglite/dist/contrib/pg_trgm.js'
-)
-
 // pg_trgm ships as a loadable module rather than being compiled into the
 // engine, so it must be registered before the migration that creates it runs.
-const db = await PGlite.create({ extensions: { pg_trgm } })
+const db = new PGlite({ extensions: { pg_trgm } })
 
 console.log('PostgreSQL (PGlite, WASM) — fresh in-memory database')
 const version = await db.query('select version()')

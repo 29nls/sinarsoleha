@@ -1,0 +1,40 @@
+name: CI
+
+# Every step here runs offline against a real PostgreSQL (PGlite, WASM) or the
+# build output. No Supabase project, no credentials, no hosted tests: those
+# write fixtures and are run deliberately, not on every push.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Database tests (PGlite)
+        run: npm run test:db
+
+      - name: Migration replay
+        run: npm run db:replay
+
+      - name: Build
+        run: npm run build
+
+      - name: Bundle secret audit
+        run: npm run audit:bundle

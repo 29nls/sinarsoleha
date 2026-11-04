@@ -268,6 +268,20 @@ Sebelum migrasi 0019 tidak ada jalur penyelesaian sama sekali:
 
 Kedua aksi membuka kembali run `completed` menjadi `running` agar baris bisa diimpor dan run ditutup lagi lewat `finish_product_import` (yang menghitung ulang counter). Stok tidak pernah disentuh.
 
+### Cara memanggilnya
+
+RPC ini **tidak bisa dijalankan dari SQL Editor**: ia memakai `private.require_active_role` → `auth.uid()`, dan di SQL Editor `auth.uid()` bernilai `NULL` sehingga hasilnya `AUTH_REQUIRED`. Pemanggilannya harus lewat sesi owner yang login dengan publishable key. Untuk itu ada `scripts/import-review-resolve.mjs` (`npm run import:review`), yang memakai `.env` dan akun owner yang sama dengan `scripts/product-import.mjs`:
+
+```bash
+npm run import:review                      # baca saja: daftar baris review tersisa
+npm run import:review -- --run <uuid> --row 1305 --action approve \
+  --sale-price 20000 --purchase-cost 9500 --reason "..."
+```
+
+Perintah kedua sudah mengimpor baris itu (`import_product_import_row`) dan menutup run (`finish_product_import`) bila tidak ada sisa baris `ready`. **Jangan** memakai `product-import.mjs --apply` untuk menutupnya: staging ulang menimpa baris yang `product_id`-nya masih `NULL`, sehingga koreksi harga kembali menjadi `review`.
+
+Di preview penyelesaian ini menghasilkan total 1.361 produk.
+
 ### Hasil di preview
 
 | Pemeriksaan | Hasil |

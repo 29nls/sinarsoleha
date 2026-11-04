@@ -125,15 +125,25 @@ sign-up publik dimatikan di `supabase/config.toml`, dan peran tidak pernah
 dibaca dari `user_metadata`. Akun harus dibuat owner di Supabase Auth Dashboard:
 
 1. Buka **Authentication → Users → Add user** pada project preview.
-2. Isi email staf dan kata sandi awal yang kuat; **jangan** aktifkan
-   "Auto Confirm User" bila email belum diverifikasi, dan jangan bagikan
+2. Isi email staf dan kata sandi awal yang kuat. Centang **Auto Confirm User**:
+   project ini tidak punya server email, sehingga akun yang belum terkonfirmasi
+   akan ditolak saat login dengan pesan "Email not confirmed". Jangan bagikan
    kredensial lewat dokumen ini.
-3. Simpan. Trigger `private.handle_new_user` membuat baris `profiles` dengan
-   peran default `cashier` dan `is_active = true`.
-4. Login sekali sebagai staf tersebut, lalu sebagai owner buka `/users` dan
-   ubah perannya menjadi `inventory_staff`.
-5. Verifikasi: `profiles.role = 'inventory_staff'`, `is_active = true`, dan akun
-   bisa membuka `/stock-opname` tetapi tetap ditolak di `/users`.
+3. Simpan. Trigger `private.handle_new_auth_user` membuat baris `profiles`
+   dengan peran default `cashier` dan **`is_active = false`** — bukan `true`.
+   Akun baru karena itu **belum bisa dipakai** sampai owner mengaktifkannya.
+4. Sebagai owner, buka `/users`, pilih staf tersebut, set peran
+   `inventory_staff`, lalu aktifkan. Aksi ini memanggil RPC
+   `admin_upsert_profile`, yang juga mengisi `activated_at`; constraint
+   `profiles_activated_at_consistency` menolak profil aktif tanpa
+   `activated_at`, jadi jangan mengubah `is_active` lewat SQL langsung.
+5. Verifikasi: `profiles.role = 'inventory_staff'`, `is_active = true`,
+   `activated_at` terisi, dan akun bisa membuka `/stock-opname` tetapi tetap
+   ditolak di `/users`.
+
+Catatan: user nonaktif **tetap bisa login** (itu disengaja — lihat `docs/16`
+§2.4 butir 2), tetapi seluruh RLS/RPC menolak operasinya. Jadi jangan memakai
+"bisa login" sebagai bukti aktivasi; periksa `profiles.is_active`.
 
 Yang tidak boleh dilakukan: menaikkan peran lewat `user_metadata` atau
 `raw_user_meta_data`, memakai akun bersama, atau menyalakan sign-up publik

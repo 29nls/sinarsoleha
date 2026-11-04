@@ -19,6 +19,7 @@
     "audit:bundle": "node scripts/audit-bundle.mjs",
     "gen:types": "node scripts/gen-types.mjs",
     "import:products": "node scripts/product-import.mjs",
+    "import:review": "node scripts/import-review-resolve.mjs",
     "test:hosted:opname:staff-b": "node scripts/opname-staff-b-readiness.mjs",
     "audit:accounts": "node scripts/account-audit.mjs",
     "db:replay": "node scripts/migration-replay.mjs"

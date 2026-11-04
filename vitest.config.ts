@@ -15,6 +15,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     // Playwright E2E specs live under e2e/ and run via `npm run test:e2e`.
-    exclude: ['**/node_modules/**', 'e2e/**'],
+    // `.tmp/` holds throwaway clones (e.g. `.tmp/clean-clone`) used to prove a
+    // fresh checkout works; their e2e specs are Playwright files, not Vitest
+    // ones, and must never be collected by `npm test`.
+    exclude: ['**/node_modules/**', 'e2e/**', '**/.tmp/**'],
   },
 })

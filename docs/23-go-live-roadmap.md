@@ -4,9 +4,11 @@ Status per 4 November 2026. Dokumen ini menjawab satu pertanyaan: **berapa
 langkah lagi sampai toko bisa dipakai berjualan?** Isinya hanya sisa pekerjaan —
 fase yang sudah selesai tidak diulang di sini.
 
-Ringkasan: **9 langkah dalam 4 tahap.** Tiga langkah pertama sekitar satu jam
-kerja teknis. Langkah keempat adalah bottleneck sebenarnya dan bukan pekerjaan
-perangkat lunak.
+Runbook pelaksanaan produksi: **`docs/24-production-cutover-runbook.md`**.
+
+Ringkasan: **empat tahap.** Tahap A sekitar satu jam kerja teknis. Tahap B —
+hitungan fisik — adalah bottleneck sebenarnya dan bukan pekerjaan perangkat
+lunak. Tahap C berjalan paralel dengan B; Tahap D menunggu keduanya.
 
 ## 1. Fakta yang menentukan jadwal
 
@@ -71,7 +73,17 @@ Tidak menunggu Tahap B. Semua butir di sini sudah tercatat terbuka di
 
 C1 **selesai** di preview: `disable_signup: true`, dan probe `POST
 /auth/v1/signup` mengembalikan `422 signup_disabled`. Aplikasi tidak butuh
-pendaftaran publik — akun dibuat owner lewat `/users`.
+pendaftaran publik.
+
+Akun **tidak** dibuat lewat halaman `/users` di aplikasi. `/users` hanya
+mengelola profil yang sudah ada (peran, aktif/nonaktif); ia tidak bisa membuat
+baris `auth.users`. Alur yang benar ada di `docs/17` §Menambah staf: buat user
+di **dashboard Supabase → Authentication → Users → Add user**, lalu aktifkan
+profilnya lewat RPC `admin_upsert_profile`. Trigger
+`private.handle_new_auth_user` membuat profil baru dengan `role='cashier'` dan
+`is_active=false`, jadi user baru **tidak bisa langsung dipakai** sampai owner
+menyetel peran dan `activated_at` — constraint
+`profiles_activated_at_consistency` menolak profil aktif tanpa `activated_at`.
 
 C4 **selesai** tanpa perlu mengubah setelan apa pun. Rate limit login Supabase
 Auth sudah aktif sebagai default dan **tidak bisa dibaca lewat CLI**:
@@ -189,16 +201,22 @@ tergantung pada satu database yang hidup.
 | # | Langkah | Pemilik | Kriteria lulus |
 | --- | --- | --- | --- |
 | D1 | Buat project Supabase produksi terpisah | Owner | project ref baru, region sama |
+| D1a | Putuskan backup produksi: paket dengan backup harian, **atau** dump logis terjadwal dari mesin ber-Docker/`pg_dump` | Owner | satu pilihan tertulis, dan satu restore ke project uji terbukti |
+| D1b | Konfigurasi Vercel produksi: env `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` milik project produksi, `site_url` + redirect Auth ke domain produksi, HSTS `includeSubDomains` setelah domain sendiri ada | Teknis | login produksi mendarat di domain produksi, bukan `127.0.0.1`/preview |
 | D2 | `db push` 23 migrasi ke produksi | Teknis | `migration list --linked` 23/23 |
 | D3 | Buat akun owner produksi + `disable_signup` | Owner | 1 owner aktif, signup tertutup |
 | D3a | Pastikan produksi mulai dari **database kosong**, bukan salinan preview | Teknis | 0 akun `phase*`, 0 `TEST-*`, 0 `HOST-*`, `audit_logs` hanya berisi aksi produksi |
-| D4 | Impor master 1.361 produk | Teknis | 1.361/1.361 imported, 0 review |
+| D4 | Impor master 1.361 produk | Teknis + Owner | 1.360 imported + 1 review, lalu review diselesaikan owner (`npm run import:review`) → 1.361 produk, semua stok `NULL` |
 | D5 | Isi saldo awal (ulangi Tahap B di produksi) | Staf gudang | 0 produk aktif `NULL` |
 | D6 | UAT produksi + latih kasir | Owner | checklist `docs/16` §5 ditandatangani |
 
 D5 **tidak bisa dilewati** dengan menyalin data dari preview. Saldo awal harus
 berasal dari hitungan fisik di lokasi produksi, karena stok bisa berbeda antara
 saat dihitung di preview dan saat toko mulai beroperasi.
+
+Prosedur per langkah — perintah, query verifikasi, jebakan, dan kriteria lulus —
+ada di **`docs/24` (runbook cutover produksi)**. Tabel di atas hanya ringkasan;
+bila keduanya berbeda, `docs/24` yang berlaku.
 
 ## 6. Urutan paralel
 
@@ -228,8 +246,15 @@ Proyek dinyatakan siap pakai bila seluruh butir ini benar:
 
 - [ ] A1–A3 selesai; satu sesi opname nyata berstatus `posted` dan terverifikasi
 - [ ] B2 selesai; 0 produk aktif berstok `NULL`
-- [ ] C1–C5 selesai; `disable_signup: true`, header keamanan terpasang
+- [ ] C1–C4 selesai; `disable_signup: true`, header keamanan terpasang, rate limit terbukti
+- [ ] C5 tuntas: backup produksi diputuskan (D1a) **dan** satu restore ke project uji dibuktikan, bukan hanya replay migrasi
 - [ ] D1–D6 selesai; produksi menerima 23/23 migrasi dan UAT ditandatangani
+- [ ] D1a selesai; paket backup atau dump terjadwal tertulis, termasuk kebijakan jeda project tak aktif pada paket itu
+- [ ] D1b selesai; env produksi + `site_url`/redirect Auth menunjuk domain produksi, bukan `127.0.0.1` atau preview
 - [ ] Owner menandatangani daftar batasan `docs/16` §6
 
 Butir pertama bisa dicapai hari ini. Butir kedua menentukan sisanya.
+
+Yang **tidak** bisa dicentang dari dalam repo: A1 (frasa gate owner), B1–B3
+(hitungan fisik), D1/D1a (keputusan biaya owner), D6 (tanda tangan UAT).
+Semuanya butuh manusia, bukan kode.

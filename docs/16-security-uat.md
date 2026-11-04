@@ -11,9 +11,10 @@ sekali.
 
 | Perintah | Yang diperiksa |
 | --- | --- |
-| `npm run test:db` | 94 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
+| `npm run test:db` | 101 tes PostgreSQL lokal (PGlite), termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
 | `npm run build` lalu `npm run audit:bundle` | Output build tidak memuat service-role key, secret key Supabase, atau JWT `service_role`. |
-| `npm test` | 257 unit test klien (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok). |
+| `npm test` | 288 unit test klien dalam 22 berkas (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok, header keamanan, terjemahan error auth). |
+| `npm run db:replay` | 23 migrasi diputar ulang ke database kosong, lalu 9 invarian skema diperiksa. Tidak butuh jaringan maupun project Supabase. |
 | `npm run test:e2e` | Alur kasir di Chromium + NFR-04 dua browser (butuh dev server/preview dan akun uji). |
 | `npm run test:hosted` | Auth/RLS/RPC nyata di preview (butuh `.env` dan akun uji). |
 | `npm run test:hosted:transactions` | Konkurensi, idempotensi, void, dan rekonsiliasi pembayaran di preview. |
@@ -90,9 +91,13 @@ grant/RLS akan gagal di CI lokal, bukan baru ketahuan di produksi.
    membaca profilnya sendiri agar UI menampilkan pesan, tetapi seluruh RLS/RPC
    menolak operasi. Diuji di hosted (`inactive account can authenticate but
    cannot act`).
-3. **Tidak ada rate limit aplikasi.** Perlindungan brute force login
-   sepenuhnya bergantung pada Supabase Auth. Jangan menambahkan percobaan
-   login otomatis di skrip produksi.
+3. **Tidak ada rate limit di aplikasi — yang dipakai rate limit Supabase Auth.**
+   Aplikasi tidak menambah pembatas sendiri, jadi perlindungan brute force
+   login sepenuhnya bergantung pada Supabase Auth. Batas itu aktif sebagai
+   default dan sudah dibuktikan dari perilaku (bukan dari setelan): percobaan
+   ke-31 dalam satu menit dijawab `429`, sementara login sah dengan kredensial
+   benar tetap `200`. Lihat `docs/23` C4. Jangan menambahkan percobaan login
+   otomatis di skrip produksi.
 
 ## 3. Model ancaman ringkas
 
@@ -103,7 +108,7 @@ grant/RLS akan gagal di CI lokal, bukan baru ketahuan di produksi.
 | Stok | Penulisan langsung | Tidak ada grant tulis `products`; ledger append-only; RPC dengan row lock |
 | Peran | Eskalasi lewat metadata/UI | `profiles.role` dari server; `private.has_role`; `admin_upsert_profile` owner-only; last-owner guard |
 | Audit | Penghapusan jejak | `audit_logs` append-only via trigger; hanya SELECT untuk staff |
-| Sesi | XSS/pencurian token | Tidak ada `v-html`/`innerHTML`; Supabase menyimpan sesi di storage internal library; CSP belum diaktifkan (lihat batasan) |
+| Sesi | XSS/pencurian token | Tidak ada `v-html`/`innerHTML`; Supabase menyimpan sesi di storage internal library; CSP ketat + HSTS aktif lewat `routeRules` (`nuxt.config.ts`), dijaga `tests/security-headers.test.ts` |
 
 ## 4. Matriks peran yang diuji
 
@@ -128,12 +133,13 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
 
 ### 5.1 Persiapan
 
-- [ ] `npm run build` dan `npm run audit:bundle` bersih.
-- [x] `npm run test:db` 88/88 dan `npm test` 257/257.
+- [x] `npm run build` dan `npm run audit:bundle` bersih (0 temuan, 151 berkas).
+- [x] `npm run test:db` 101/101 dan `npm test` 288/288 (22 berkas).
+- [x] `npm run db:replay` 23/23 migrasi, 9/9 invarian, dari clone bersih tanpa `.tmp/`.
 - [x] Migrasi 5A + Broadcast diterapkan ke preview setelah persetujuan owner
       (setara `APPROVE PHASE 5A MIGRATION TO PREVIEW`), 4 November 2026.
 - [ ] Tiga akun uji aktif: owner, kasir, staf gudang; satu akun nonaktif.
-- [ ] Katalog 1.360 produk terlihat; produk stok `NULL` tampil “—”.
+- [ ] Katalog 1.361 produk aktif terlihat; produk stok `NULL` tampil “—”.
 
 ### 5.2 Owner
 
@@ -213,12 +219,19 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
   tetap berfungsi.
 - **Margin/laba kotor tidak disajikan.** 119 produk tidak punya harga beli dan
   tidak ada histori biaya per tanggal (PRD §5.5).
-- **CSP belum diaktifkan.** Tidak ada `innerHTML`/`v-html`, tetapi header
-  keamanan (CSP, HSTS) harus dipasang di lapisan hosting sebelum produksi.
+- **CSP dan HSTS sudah aktif, dengan satu pengecualian yang disengaja.** Header
+  dipasang lewat `routeRules` di `nuxt.config.ts` sehingga berlaku di host mana
+  pun, dan `'unsafe-inline'` masih diperlukan untuk tiga skrip inline shell SPA.
+  HSTS dipasang **tanpa** `includeSubDomains` karena host preview berada di
+  domain bersama `vercel.app`; opsi itu baru dinyalakan setelah domain produksi
+  milik toko tersedia (D1b di `docs/24`).
 - **Tanpa mode offline.** Koneksi terputus berarti operasi gagal dengan pesan,
   bukan antrean lokal.
-- **Rate limit login** bergantung pada Supabase Auth; aktifkan pengaturan
-  bawaan sebelum go-live.
+- **Rate limit login** sepenuhnya milik Supabase Auth dan aktif sebagai default.
+  Batasnya per **IP**, bukan per akun: satu IP toko yang dipakai bersama berarti
+  seluruh staf berbagi ~30 percobaan per 5 menit. Itu pelengkap kebijakan
+  password, bukan pengganti. Nilainya tidak terbaca lewat CLI dan sengaja tidak
+  dikejar; yang dibuktikan adalah perilakunya (C4 di `docs/23`).
 
 ## 7. Definition of done Phase 8
 
@@ -227,8 +240,10 @@ checklist di atas dieksekusi pada preview (migrasi 5A + Realtime sudah
 diterapkan), temuan diklasifikasikan (blocker / minor / catatan), dan owner
 menandatangani daftar batasan di bagian 6.
 
-Status 4 November 2026: gate otomatis lulus — `test:db` 88/88, `npm test`
-257/257, `audit:bundle` 0 temuan, `test:hosted:transactions` lulus, dan NFR-04
-terukur 899 ms. Checklist manual yang masih terbuka hanya butir yang butuh
-perangkat atau keputusan owner (printer/scanner fisik, QRIS dinamis, CSP
-hosting); sisanya sudah dijalankan lewat tes otomatis.
+Status 4 November 2026: gate otomatis lulus — `test:db` 101/101, `npm test`
+288/288, `db:replay` 23/23 migrasi + 9/9 invarian, `audit:bundle` 0 temuan,
+`test:hosted:transactions` lulus, dan NFR-04 terukur 899 ms. Enam langkah itu
+kini dijalankan otomatis oleh `.github/workflows/ci.yml` pada setiap push.
+Checklist manual yang masih terbuka hanya butir yang butuh perangkat, data
+nyata, atau keputusan owner (printer/scanner fisik, QRIS dinamis, akun uji,
+saldo awal); sisanya sudah dijalankan lewat tes otomatis.
