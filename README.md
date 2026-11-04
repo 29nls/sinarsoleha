@@ -9,7 +9,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 0 | Audit dokumen, database, arsitektur | Selesai — lihat `docs/00-phase-0-audit.md` |
 | 1 | Fondasi aplikasi, layout, navigasi, auth | Selesai |
 | 2 | Migrasi database, RLS, RPC katalog | **Selesai (preview hosted tervalidasi)** — 20/20 lokal + 20/20 hosted; produksi belum diterapkan |
-| 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1 baris review** |
+| 3 | Katalog produk (3A), impor massal (3B) | **3A & 3B selesai (preview); 1.361/1.361 baris impor masuk** |
 | 4 | Mesin transaksi (4A), UI kasir (4B), riwayat/void (4C), validasi hosted & E2E (4D) | **4A–4D selesai (preview); checkout aktif; produksi belum diterapkan** |
 | 5 | Mesin inventaris (5A), UI opname (5B), UI inventaris (5C) | **5A–5C selesai & diuji; migrasi 5A sudah di preview** |
 | 6 | Laporan penjualan, per produk, exception data, ekspor CSV | **Selesai & diuji lokal** |
@@ -21,7 +21,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 
 Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal serta hosted; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **lulus** pada Phase 4D (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`. Produksi belum diterapkan.
 
-Impor master Phase 3B sudah dijalankan ke preview pada 3 November 2026: 1.360 produk masuk dengan stok `NULL`, 1 baris review (`WAL-W1303`), 0 ditolak. Rekonsiliasi dan sisa pekerjaan ada di `docs/06-product-master-import.md`.
+Impor master Phase 3B sudah dijalankan ke preview pada 3 November 2026: 1.360 produk masuk dengan stok `NULL`, 1 baris review (`WAL-W1303`), 0 ditolak. Baris review itu diselesaikan pada 4 November 2026 lewat RPC `resolve_product_import_review` (migrasi `20261106120000`): harga jual/beli yang tertukar dikoreksi menjadi 20.000/9.500, sehingga run kini **1.361/1.361 imported, 0 review**. Rekonsiliasi dan sisa pekerjaan ada di `docs/06-product-master-import.md`.
 
 Phase 4A menambah `complete_sale` dan `void_sale` dengan penguncian produk, idempotensi, snapshot harga, dan ledger stok; 42/42 tes database lulus. Migrasi sudah aktif di preview, matriks otorisasi hosted terverifikasi, dan pada Phase 4D uji konkurensi, idempotensi, void, serta pembayaran hosted lulus 10/10 — lihat `docs/07-transaction-engine.md`.
 

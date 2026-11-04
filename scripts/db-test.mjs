@@ -965,6 +965,161 @@ async function runTests() {
     })
   })
 
+  await test('review resolution is owner-only', async () => {
+    await asRole('authenticated', CASHIER, async () => {
+      await expectError('42501', () =>
+        db.query(`select public.resolve_product_import_review($1, 903, 'approve', 20000, 9500)`, [importRunId]),
+      )
+    })
+    await asRole('anon', null, async () => {
+      await expectError('42501', () =>
+        db.query(`select public.resolve_product_import_review($1, 903, 'approve', 20000, 9500)`, [importRunId]),
+      )
+    })
+    const untouched = await db.query(
+      `select validation_status, reviewed_by from public.product_import_rows where run_id = $1 and source_row_number = 903`,
+      [importRunId],
+    )
+    assert(untouched.rows[0].validation_status === 'review', 'a denied caller changed the row')
+    assert(untouched.rows[0].reviewed_by === null, 'a denied caller wrote reviewed_by')
+  })
+
+  await test('review approval refuses a price that is still below cost', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      await expectError('22023', () =>
+        db.query(`select public.resolve_product_import_review($1, 903, 'approve', 9500, 20000)`, [importRunId]),
+      )
+      await expectError('22023', () =>
+        db.query(`select public.resolve_product_import_review($1, 901, 'approve', 20000, 9500)`, [importRunId]),
+      )
+      await expectError('22023', () =>
+        db.query(`select public.resolve_product_import_review($1, 904, 'approve', 20000, 9500)`, [importRunId]),
+      )
+      const row = await db.query(
+        `select validation_status, sale_price, reviewed_by from public.product_import_rows where run_id = $1 and source_row_number = 903`,
+        [importRunId],
+      )
+      assert(row.rows[0].validation_status === 'review', 'a refused approval moved the row')
+      assert(row.rows[0].reviewed_by === null, 'a refused approval wrote reviewed_by')
+    })
+  })
+
+  await test('approving a review row reopens the completed run and marks it ready', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const result = await db.query(
+        `select public.resolve_product_import_review($1, 903, 'approve', 20000, 9500) as r`,
+        [importRunId],
+      )
+      const body = result.rows[0].r
+      assert(body.status === 'ready', `expected ready, got ${body.status}`)
+      assert(body.run_status === 'running', 'the completed run was not reopened')
+      assert(Number(body.sale_price) === 20000 && Number(body.purchase_cost) === 9500, 'prices were not corrected')
+
+      const row = await db.query(
+        `select validation_status, review_status, issue_codes, reviewed_by, reviewed_at, error_messages
+           from public.product_import_rows where run_id = $1 and source_row_number = 903`,
+        [importRunId],
+      )
+      const staged = row.rows[0]
+      assert(staged.validation_status === 'ready', 'row was not marked ready')
+      assert(staged.reviewed_by !== null, 'reviewed_by was not recorded')
+      assert(staged.reviewed_at !== null, 'reviewed_at was not recorded')
+      assert(!staged.issue_codes.includes('sale_below_cost'), 'sale_below_cost survived the correction')
+      assert(staged.issue_codes.includes('stock_unknown'), 'unrelated issue codes were dropped')
+      assert(staged.error_messages.length === 0, 'error messages were not cleared')
+
+      const audit = await db.query(
+        `select count(*)::int as n from public.audit_logs where action_key = 'product_import.review'`,
+      )
+      assert(audit.rows[0].n === 1, 'review resolution was not audited')
+    })
+  })
+
+  await test('an approved review row imports with the corrected price and no below-cost issue', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      const imported = await db.query(`select public.import_product_import_row($1, 903) as r`, [importRunId])
+      assert(imported.rows[0].r.status === 'imported', 'approved row was not imported')
+
+      const product = await db.query(
+        `select id, sale_price, stock_on_hand, stock_version from public.products where sku_normalized = 'IMP-003'`,
+      )
+      assert(product.rows.length === 1, 'approved product is missing')
+      const row = product.rows[0]
+      assert(Number(row.sale_price) === 20000, 'corrected sale price was not used')
+      assert(row.stock_on_hand === null, 'review import wrote stock')
+      assert(Number(row.stock_version) === 0, 'review import changed stock_version')
+
+      const cost = await db.query(`select purchase_cost from public.product_costs where product_id = $1`, [row.id])
+      assert(Number(cost.rows[0].purchase_cost) === 9500, 'corrected purchase cost was not stored')
+
+      const issues = await db.query(
+        `select issue_code from public.product_data_issues where product_id = $1 order by issue_code`,
+        [row.id],
+      )
+      const codes = issues.rows.map((item) => item.issue_code)
+      assert(!codes.includes('sale_below_cost'), 'below-cost issue was written for a corrected row')
+      assert(codes.includes('stock_unknown'), 'stock issue was lost')
+    })
+  })
+
+  await test('rejecting a review row needs a reason and leaves no product', async () => {
+    await asRoleCommit('authenticated', OWNER, async () => {
+      await db.query(`select public.stage_product_import_rows($1, $2::jsonb) as r`, [
+        importRunId,
+        JSON.stringify([
+          importRow({
+            source_row_number: 907,
+            sku_raw: 'IMP-REVIEW',
+            normalized_sku: 'IMP-REVIEW',
+            name_raw: 'Produk Ditolak',
+            normalized_name: 'Produk Ditolak',
+            validation_status: 'review',
+            review_status: 'review_required',
+            sale_price: 9500,
+            purchase_cost: 20000,
+            issue_codes: ['stock_unknown', 'sale_below_cost'],
+          }),
+        ]),
+      ])
+
+      // Omitting the prices keeps the staged ones, which are still below cost.
+      await expectError('22023', () =>
+        db.query(`select public.resolve_product_import_review($1, 907, 'approve')`, [importRunId]),
+      )
+
+      await expectError('22023', () =>
+        db.query(`select public.resolve_product_import_review($1, 907, 'reject')`, [importRunId]),
+      )
+
+      const result = await db.query(
+        `select public.resolve_product_import_review($1, 907, 'reject', null, null, 'Harga belum dikonfirmasi supplier') as r`,
+        [importRunId],
+      )
+      assert(result.rows[0].r.status === 'rejected', 'row was not rejected')
+
+      const row = await db.query(
+        `select validation_status, reviewed_by, error_messages from public.product_import_rows where run_id = $1 and source_row_number = 907`,
+        [importRunId],
+      )
+      assert(row.rows[0].validation_status === 'rejected', 'staged row is not rejected')
+      assert(row.rows[0].reviewed_by !== null, 'reviewed_by was not recorded on reject')
+      assert(
+        row.rows[0].error_messages.some((message) => message.includes('supplier')),
+        'rejection reason was not stored',
+      )
+
+      const product = await db.query(`select count(*)::int as n from public.products where sku_normalized = 'IMP-REVIEW'`)
+      assert(product.rows[0].n === 0, 'a rejected review row created a product')
+
+      const finished = await db.query(`select public.finish_product_import($1, 'completed') as r`, [importRunId])
+      const run = finished.rows[0].r
+      assert(run.status === 'completed', 'run was not completed after review resolution')
+      assert(run.imported_rows === 4, `unexpected imported_rows ${run.imported_rows}`)
+      assert(run.review_rows === 0, `unexpected review_rows ${run.review_rows}`)
+      assert(run.rejected_rows === 3, `unexpected rejected_rows ${run.rejected_rows}`)
+    })
+  })
+
   await test('cashier completes a sale with database price and stock', async () => {
     const productId = await saleProduct('SALE-001', { stock: 10, price: 5000 })
     const key = randomUUID()

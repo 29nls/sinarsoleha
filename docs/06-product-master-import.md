@@ -101,6 +101,7 @@ Verifikasi hosted read-only setelah migrasi: owner dapat `SELECT` kedua tabel, `
 | --- | --- |
 | `public.begin_product_import(jsonb)` | Owner-only. Membuat run baru; mengembalikan run `running`/`failed` yang sama untuk checksum yang sama (resume); menolak run `completed` dengan `IMPORT_ALREADY_COMPLETED`. |
 | `public.stage_product_import_rows(uuid, jsonb)` | Owner-only. Batch 1–200 baris, satu statement upsert `ON CONFLICT (run_id, source_row_number)`, tidak menimpa baris yang sudah `imported`. Satuan diresolusi dari `units_of_measure.code`. |
+| `public.resolve_product_import_review(uuid, integer, text, numeric, numeric, text)` | Owner-only. Memindahkan baris `review` ke `ready` (dengan koreksi harga) atau `rejected` (dengan alasan), mengisi `reviewed_by`/`reviewed_at`, dan membuka kembali run yang sudah `completed`. Lihat §13. |
 | `public.import_product_import_row(uuid, integer)` | Owner-only. Hanya baris `ready`/`failed`. Memanggil `private.upsert_product` (validasi katalog yang sudah ada), lalu `private.set_product_cost` bila ada biaya, menulis `product_data_issues`, menandai baris `imported`, dan audit `product.import`. Idempoten: baris yang sudah punya `product_id` mengembalikan `already_imported`. |
 | `public.finish_product_import(uuid, text)` | Owner-only. Menghitung ulang counter; menolak `completed` bila masih ada baris ready yang belum diimpor (`IMPORT_INCOMPLETE`). |
 
@@ -192,7 +193,7 @@ Hasil 3 November 2026:
 | SKU duplikat | 0 |
 | Kategori | 208 (203 impor + 5 kategori uji Phase 2B) |
 | Satuan impor | PCS 1.305, LUSIN 20, METER 14, ROLL 13, SET 4, PAX 2, PACK 1, KARUNG 1 |
-| Baris 1305 | `review`, `product_id` NULL |
+| Baris 1305 | `review`, `product_id` NULL — **diselesaikan 4 November 2026**, lihat §13 |
 
 Kegagalan stok (ada `stock_on_hand` tidak `NULL` atau ada movement baru) adalah kegagalan kritis; impor tidak boleh dilaporkan sukses.
 
@@ -223,8 +224,64 @@ Pada 3 November 2026 owner menerapkan migrasi dan menjalankan impor sendiri lewa
 
 ## 12. Batasan
 
-- Baris 1305 (`WAL-W1303`) masih `review` tanpa produk; harga jual di bawah biaya perlu keputusan owner.
+- Baris 1305 (`WAL-W1303`) sudah diimpor setelah koreksi harga (lihat §13). Tidak ada baris review tersisa.
 - 5 produk uji `HOST-*` dan 5 kategori `Phase 2B …` dari smoke test 2 November masih ada; bukan bagian impor dan perlu dibersihkan sebelum produksi.
 - Saldo awal stok tetap `NULL` untuk semua produk; opname fisik Phase 5 belum dijalankan.
 - Migrasi diuji di PGlite (PostgreSQL 18.6) dan sudah diterapkan ke preview hosted (PostgreSQL 17.11); verifikasi hosted bersifat read-only, bukan suite penuh.
 - `npm run test:hosted` tidak dijalankan ulang setelah impor karena skripnya menulis data uji baru.
+
+## 13. Penyelesaian baris review 1305 (`WAL-W1303`)
+
+### Temuan
+
+Baris 1305 adalah satu-satunya baris `review` dari 1.361 baris. Statusnya `review_required` dengan `issue_codes = {stock_unknown, sale_below_cost}`: harga jual 9.500 di bawah harga beli 20.000 (margin −52,5%).
+
+Bukti bahwa ini salah input, bukan keputusan harga:
+
+| Bukti | Nilai |
+| --- | --- |
+| Baris 1306 tepat setelahnya (`PER-G1304`) | jual 20.000 / beli 9.500 — **persis tertukar** |
+| Rasio jual/beli baris 1305 | tepat 0,475 (kebalikan margin +110,5%) |
+| Produk lain dengan pasangan harga 9.500/20.000 | 4 produk, semuanya jual 20.000 / beli 9.500 |
+| Produk dengan jual < beli di seluruh katalog | 0 dari 1.242 produk berharga lengkap |
+| Kategori `WALPAPER` | 0 produk lain; SKU `WAL-` hanya 1 di workbook, tidak ada pembanding internal |
+
+Keputusan owner (4 November 2026): **harga jual 20.000, harga beli 9.500**.
+
+### Kendala yang ditemukan
+
+Sebelum migrasi 0019 tidak ada jalur penyelesaian sama sekali:
+
+- `product_import_rows.reviewed_by`/`reviewed_at` ada, tetapi **tidak ada fungsi yang menulisnya**.
+- `products` hanya punya policy `SELECT` untuk staf; tidak ada `INSERT`/`UPDATE` klien.
+- `import_product_import_row` menolak baris `review` dengan `ROW_NOT_IMPORTABLE`.
+- Run sudah `completed`, dan `begin_product_import` menolak checksum yang sama dengan `IMPORT_ALREADY_COMPLETED`.
+
+### Migrasi 0019
+
+`20261106120000_import_review_resolution.sql` menambah `public.resolve_product_import_review` (owner-only):
+
+| Aksi | Efek |
+| --- | --- |
+| `approve` | Harga boleh dikoreksi; baris menjadi `ready`, `reviewed_by`/`reviewed_at` terisi, isu harga dihitung ulang. Ditolak bila harga jual masih di bawah biaya (`SALE_BELOW_COST`). |
+| `reject` | Baris menjadi `rejected` dengan alasan wajib (maks. 500 karakter). |
+
+Kedua aksi membuka kembali run `completed` menjadi `running` agar baris bisa diimpor dan run ditutup lagi lewat `finish_product_import` (yang menghitung ulang counter). Stok tidak pernah disentuh.
+
+### Hasil di preview
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| Migrasi | 19/19 sinkron; `db push` menerapkan tepat satu migrasi |
+| `resolve_product_import_review` | `ready`, run → `running` |
+| `import_product_import_row` | `imported`, `product_id` `bad05f1d…` |
+| `finish_product_import` | `completed`: total 1.361, ready 1.361, review 0, rejected 0, imported 1.361 |
+| Produk `WAL-W1303` | jual 20.000, beli 9.500, `stock_on_hand` NULL, `stock_version` 0 |
+| Isu produk | hanya `stock_unknown`; **tidak ada** `sale_below_cost` |
+| Stock movement | 0 |
+| `reviewed_by`/`reviewed_at` | terisi |
+| Audit `product_import.review` | 1 baris |
+| Katalog | 1.373 produk, **0** dengan jual < beli |
+| `stock_on_hand` NOT NULL | 4, semuanya SKU uji `TEST-*` (bukan produk impor) |
+
+Tes: `npm run test:db` **93/93**, `npm test` **257/257**, `npm run typecheck` exit 0. Lima tes baru mencakup otorisasi owner-only, penolakan harga di bawah biaya, pembukaan ulang run, impor dengan harga terkoreksi, dan penolakan dengan alasan wajib.

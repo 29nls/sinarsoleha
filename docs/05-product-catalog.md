@@ -1,6 +1,6 @@
 # Katalog Produk — Phase 3A
 
-**Status: selesai untuk preview.** Halaman katalog memakai data Supabase nyata. Impor massal 1.361 produk, modul kasir, checkout, dan koreksi stok belum termasuk Phase 3A. Phase 3B sudah diimpor ke preview pada 3 November 2026 (1.360 produk, stok `NULL`); detail di `docs/06-product-master-import.md`.
+**Status: selesai untuk preview.** Halaman katalog memakai data Supabase nyata. Impor massal 1.361 produk, modul kasir, checkout, dan koreksi stok belum termasuk Phase 3A. Phase 3B sudah diimpor ke preview (1.360 produk pada 3 November 2026, ditambah `WAL-W1303` pada 4 November 2026 setelah koreksi harga), seluruhnya dengan stok `NULL`; detail di `docs/06-product-master-import.md`.
 
 ## Route dan halaman
 
@@ -83,7 +83,7 @@ Payload produk tidak pernah memuat `stock_on_hand`, `stock_version`, `quantity_b
 ## Phase 3B — impor master
 
 - Pipeline `scripts/product-import.mjs` membaca workbook `PART MASTER`, memvalidasi 1.361 baris, dan menulis lima laporan ke `.tmp/`; dry-run tidak memanggil Supabase.
-- Hasil: 1.360 baris siap, 1 baris review (`WAL-W1303`, harga jual di bawah biaya), 0 rejected, 203 kategori, 8 kode satuan.
+- Hasil: 1.360 baris siap, 1 baris review (`WAL-W1303`, harga jual di bawah biaya), 0 rejected, 203 kategori, 8 kode satuan. Baris review tersebut diselesaikan 4 November 2026 lewat `resolve_product_import_review` (migrasi `20261106120000`), sehingga total impor menjadi 1.361.
 - Migrasi `20261103090000_product_import.sql` menambah staging owner-only dan RPC impor; sudah diterapkan ke preview.
 - Impor 3 November 2026 (run `530bafe6…`) menghasilkan 1.360 produk; semuanya `stock_on_hand NULL` dengan `stock_version = 0`, tanpa movement atau opname.
 - 1.507 isu harga/stok tercatat: 28 produk tanpa harga jual, 119 tanpa biaya, 37 stok sumber negatif, 1.323 stok tidak diketahui.

@@ -131,6 +131,18 @@ parameter tambahan opsional; pemanggil lama tanpa kunci tetap sah.
 - Respons: `product_id`, `sku`, `stock_before`, `stock_after`, `delta`, `stock_version`, `reason_code`, `reason_note`, `movement_id`, `already_processed`.
 - Wrapper `public` hanya memberi `EXECUTE` ke `authenticated`; `anon` ditolak.
 
+## 6. `public.resolve_product_import_review(uuid, integer, text, numeric, numeric, text)`
+
+Migrasi `20261106120000_import_review_resolution.sql`. Owner-only. Menutup celah 0012: kolom `reviewed_by`/`reviewed_at` ada tetapi tidak pernah ditulis, dan `import_product_import_row` hanya menerima `ready`/`failed`.
+
+- Parameter: `p_run_id`, `p_source_row_number`, `p_action` (`approve`|`reject`), `p_sale_price`, `p_purchase_cost`, `p_reason`.
+- `approve`: harga yang diberikan menggantikan nilai staging (`NULL` berarti pertahankan nilai lama, bukan mengosongkan). Baris menjadi `ready`, `reviewed_by`/`reviewed_at` terisi, `issue_codes` harga dihitung ulang. Ditolak `SALE_BELOW_COST` bila harga jual masih di bawah biaya, `SALE_PRICE_REQUIRED` bila harga jual kosong.
+- `reject`: alasan wajib (`REASON_REQUIRED`, maks. 500 karakter); baris menjadi `rejected`.
+- Hanya baris berstatus `review` yang boleh diproses (`ROW_NOT_IN_REVIEW`); baris yang sudah punya `product_id` ditolak `ROW_ALREADY_IMPORTED`.
+- Run `completed` dibuka kembali menjadi `running` agar baris dapat diimpor; tutup lagi dengan `finish_product_import` yang menghitung ulang counter. Stok tidak pernah disentuh.
+- Audit: `product_import.review` (dan `product_import.resume` bila run dibuka kembali).
+- Wrapper `public` hanya memberi `EXECUTE` ke `authenticated`; `anon` ditolak.
+
 ## Yang sudah tersedia untuk fase berikutnya
 
 - Nomor dokumen: `private.next_document_number(scope, business_date)`.

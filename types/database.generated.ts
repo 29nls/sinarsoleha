@@ -650,6 +650,9 @@ isOneToOne: false
 "record_stock_opname_count":
 { Args: { "p_physical_qty": number,"p_reason_code": string,"p_reason_note": string,"p_stock_opname_item_id": string }; Returns: Json
                            },
+"resolve_product_import_review":
+{ Args: { "p_action": string,"p_purchase_cost"?: number,"p_reason"?: string,"p_run_id": string,"p_sale_price"?: number,"p_source_row_number": number }; Returns: Json
+                           },
 "set_feature_flag":
 { Args: { "p_enabled": boolean,"p_feature_key": string,"p_public_config": Json }; Returns: Json
                            },

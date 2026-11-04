@@ -1151,3 +1151,40 @@ dulu memperlihatkan hanya migrasi ini). Verifikasi pasca-push:
 Probe peran adalah bukti yang tepat untuk migrasi ini: kalau re-grant
 `has_role` salah, setiap policy yang memakainya akan melempar `42501`, bukan
 mengembalikan baris terbatas. Produksi tetap belum menerima migrasi apa pun.
+
+## 4 November 2026 — Penyelesaian baris review `WAL-W1303`
+
+### Lingkup
+
+- Investigasi read-only atas satu-satunya baris `review` (baris 1305, `WAL-W1303`): `issue_codes = {stock_unknown, sale_below_cost}`, harga jual 9.500 < biaya 20.000.
+- Bukti salah input: baris 1306 tepat setelahnya berisi angka persis tertukar (20.000/9.500); rasio 0,475; 4 produk lain dengan pasangan harga sama semuanya berorientasi benar; 0 dari 1.242 produk berkatalog punya jual < beli.
+- Ditemukan dua hambatan: tidak ada RPC yang menulis `reviewed_by`/`reviewed_at`, dan run sudah `completed` sehingga `begin_product_import` menolak checksum yang sama.
+- Keputusan owner: harga jual 20.000, harga beli 9.500.
+
+### File dibuat
+
+| Kelompok | File |
+| --- | --- |
+| Migrasi | `supabase/migrations/20261106120000_import_review_resolution.sql` |
+
+### File dimodifikasi
+
+- `scripts/db-test.mjs` — 5 tes baru: otorisasi owner-only, penolakan harga di bawah biaya, pembukaan ulang run + penandaan `ready`, impor dengan harga terkoreksi tanpa isu `sale_below_cost`, dan penolakan dengan alasan wajib.
+- `docs/06-product-master-import.md` — §13 (temuan, kendala, migrasi, hasil preview).
+- `docs/04-rpc-contracts.md` — §6 kontrak `resolve_product_import_review`.
+- `README.md`, `docs/PROGRESS.md` — status 3B menjadi 1.361/1.361.
+
+### Verifikasi
+
+| Perintah / probe | Hasil |
+| --- | --- |
+| `npm run test:db` | **93/93 lulus** (sebelumnya 88) |
+| `npm test` | **257/257 lulus** |
+| `npm run typecheck` | exit 0 |
+| `migration list --linked` | 19/19 sinkron |
+| `db push --dry-run` | tepat satu migrasi |
+| Probe hosted | resolve → ready; import → imported; finish → 1.361/1.361, review 0 |
+| Produk `WAL-W1303` | jual 20.000 / beli 9.500, stok NULL, tanpa `sale_below_cost`, 0 movement |
+| Katalog | 1.373 produk, 0 dengan jual < beli |
+
+Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugrjepdhdhhdkzxn`.
