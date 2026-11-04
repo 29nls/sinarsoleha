@@ -2142,6 +2142,55 @@ async function runOpnameTests() {
   })
 }
 
+async function runRealtimeTests() {
+  await test('H1 — stock update broadcasts a minimal private payload', async () => {
+    await db.exec('delete from realtime.messages')
+    await db.query(
+      `update public.products set stock_on_hand = 7, stock_version = stock_version + 1 where id = $1`,
+      [PRODUCT],
+    )
+    const rows = await db.query('select topic, event, payload, private from realtime.messages')
+    assert(rows.rows.length === 1, `expected 1 broadcast, got ${rows.rows.length}`)
+    const message = rows.rows[0]
+    assert(message.topic === 'store:stock', `unexpected topic ${message.topic}`)
+    assert(message.event === 'stock_changed', `unexpected event ${message.event}`)
+    assert(message.private === true, 'stock broadcast must be private')
+    assert(
+      JSON.stringify(Object.keys(message.payload).sort()) ===
+        JSON.stringify(['product_id', 'sku', 'stock_on_hand', 'stock_version']),
+      `payload keys leaked: ${Object.keys(message.payload).join(', ')}`,
+    )
+    assert(message.payload.product_id === PRODUCT, 'payload lost product_id')
+    assert(Number(message.payload.stock_on_hand) === 7, 'payload lost the new balance')
+  })
+
+  await test('H2 — name-only and NULL-stock updates stay silent', async () => {
+    await db.exec('delete from realtime.messages')
+    await db.query(`update public.products set name = 'Produk Uji Baru' where id = $1`, [PRODUCT])
+    await db.query(
+      `update public.products set stock_on_hand = null, stock_version = stock_version + 1 where id = $1`,
+      [PRODUCT_NULL],
+    )
+    const rows = await db.query('select count(*)::int as n from realtime.messages')
+    assert(rows.rows[0].n === 0, `expected no broadcast, got ${rows.rows[0].n}`)
+  })
+
+  await test('H3 — the store:stock topic is restricted to authenticated sessions', async () => {
+    const policy = await db.query(
+      `select polroles::regrole[]::text[] as roles
+         from pg_policy p
+         join pg_class c on c.oid = p.polrelid
+         join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = 'realtime' and c.relname = 'messages' and p.polname = 'stock topic readable by authenticated'`,
+    )
+    assert(policy.rows.length === 1, 'realtime.messages policy is missing')
+    assert(
+      JSON.stringify(policy.rows[0].roles) === JSON.stringify(['authenticated']),
+      `unexpected policy roles: ${policy.rows[0].roles.join(', ')}`,
+    )
+  })
+}
+
 async function runSecurityTests() {
   await test('I1 — anon has no table privilege in the public schema', async () => {
     const result = await db.query(
@@ -2291,6 +2340,7 @@ async function main() {
   await seed()
   await runTests()
   await runOpnameTests()
+  await runRealtimeTests()
   await runSecurityTests()
 
   console.log(`\n${passed} passed, ${failed} failed`)

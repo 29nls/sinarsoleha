@@ -5,6 +5,7 @@ import { useCashierStore } from '~/stores/cashier'
 import { useSupabaseClient } from '~/composables/useSupabase'
 import { useCashierSearch } from '~/composables/useCashierSearch'
 import { usePlugins } from '~/composables/usePlugins'
+import { useStockRealtime } from '~/composables/useStockRealtime'
 import { completeSale, getCashierProducts, getReceipt, searchCashierProducts } from '~/services/cashier'
 import { businessDateJakarta, centsToAmount, describeCashierError, lineTotalCents } from '~/utils/cashier'
 import { formatDate, formatQuantity, formatRupiah } from '~/utils/format'
@@ -37,6 +38,22 @@ const receiptOpen = shallowRef(false)
 // Keep live checkout disabled until Phase 4A.1 hosted acceptance gate passes.
 const hostedCheckoutEnabled = true
 const online = shallowRef(true)
+
+/**
+ * Realtime only refreshes what is already on screen: the cart rows and the
+ * current search results. Checkout still validates stock in PostgreSQL.
+ */
+const stockChannel = useStockRealtime(client, {
+  onStock(event) {
+    const changed = store.applyStockChange(event)
+    search.applyStock(event)
+    if (changed && store.stockError) notice.value = store.stockError
+  },
+  onResync() {
+    void refreshCartStock()
+  },
+})
+const stockLive = computed(() => stockChannel.status.value === 'subscribed')
 
 const businessDate = businessDateJakarta()
 const businessDateLabel = formatDate(new Date(`${businessDate}T00:00:00+07:00`))
@@ -196,6 +213,8 @@ async function refreshCartStock() {
       client,
       store.lines.map((line) => line.product.id),
     )
+    // The fresh read supersedes any remembered broadcast version.
+    store.resetStockVersions()
     store.replaceProductStock(new Map(rows.map((row) => [row.id, row])))
   } catch {
     // The original backend error is more useful than a refresh failure.
@@ -230,17 +249,24 @@ async function submitCheckout() {
   }
 }
 
+function handleOnline() {
+  updateOnline()
+  if (navigator.onLine) stockChannel.reconnect()
+}
+
 onMounted(() => {
   updateOnline()
   void plugins.load()
+  stockChannel.start()
   window.addEventListener('keydown', handleKeydown)
-  window.addEventListener('online', updateOnline)
+  window.addEventListener('online', handleOnline)
   window.addEventListener('offline', updateOnline)
 })
 
 onBeforeUnmount(() => {
+  stockChannel.stop()
   window.removeEventListener('keydown', handleKeydown)
-  window.removeEventListener('online', updateOnline)
+  window.removeEventListener('online', handleOnline)
   window.removeEventListener('offline', updateOnline)
 })
 </script>
@@ -252,6 +278,7 @@ onBeforeUnmount(() => {
       :role-label="roleLabel"
       :business-date-label="businessDateLabel"
       :online="online"
+      :stock-live="stockLive"
     />
 
     <div v-if="notice" class="notice notice-warn" role="status">{{ notice }}</div>

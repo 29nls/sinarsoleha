@@ -98,8 +98,9 @@ oleh middleware yang sudah ada. Entri sidebar `inventory` kini
 - Filter stok rendah memindai maksimal 5.000 produk. Katalog saat ini 1.360,
   jadi batas belum tercapai, tetapi katalog yang jauh lebih besar akan membuat
   filter ini tidak lengkap dan perlu dipindahkan ke view/RPC.
-- Belum ada Realtime; pengguna lain perlu "Muat ulang" untuk melihat movement
-  terbaru.
+- Halaman ini tetap baca manual: Realtime `store:stock` hanya dipasang di
+  layar kasir (`docs/18-realtime-stock.md`), jadi pengguna lain masih perlu
+  "Muat ulang" untuk melihat movement terbaru di sini.
 - Migrasi Phase 5A **masih menunggu approval** untuk diterapkan ke preview
   `ptbllrugrjepdhhdkzxn`. Tanpa migrasi itu tabel ledger belum ada di hosted,
   sehingga ketiga halaman hanya bisa diuji lokal. Produksi tidak disentuh.

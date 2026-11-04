@@ -19,13 +19,14 @@ interface CashierProductRow {
   unit_id: number
   sale_price: number | null
   stock_on_hand: number | null
+  stock_version: number
   is_active: boolean
   categories: { name: string } | null
   units_of_measure: { label: string; code: string; decimal_scale: number } | null
 }
 
 const PRODUCT_SELECT =
-  'id, sku, name, unit_id, sale_price, stock_on_hand, is_active, categories(name), units_of_measure(label, code, decimal_scale)'
+  'id, sku, name, unit_id, sale_price, stock_on_hand, stock_version, is_active, categories(name), units_of_measure(label, code, decimal_scale)'
 
 function mapProduct(row: CashierProductRow): CashierProduct {
   return {
@@ -39,6 +40,7 @@ function mapProduct(row: CashierProductRow): CashierProduct {
     decimalScale: row.units_of_measure?.decimal_scale ?? 0,
     salePrice: row.sale_price,
     stockOnHand: row.stock_on_hand,
+    stockVersion: row.stock_version,
     isActive: row.is_active,
   }
 }

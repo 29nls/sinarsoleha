@@ -1,6 +1,7 @@
 import { onScopeDispose, shallowRef } from 'vue'
 import type { CashierProduct } from '~/types/cashier'
 import { describeCashierError } from '~/utils/cashier'
+import { applyStockBroadcast, type StockBroadcast } from '~/utils/stock'
 
 const DEBOUNCE_MS = 150
 
@@ -71,7 +72,13 @@ export function useCashierSearch(loader: (term: string) => Promise<CashierProduc
       (highlighted.value + delta + results.value.length) % results.value.length
   }
 
+  /** Keeps the visible result rows in sync with a Realtime stock message. */
+  function applyStock(event: StockBroadcast) {
+    const { rows } = applyStockBroadcast(results.value, event, (row) => row.stockVersion ?? null)
+    if (rows !== results.value) results.value = rows
+  }
+
   onScopeDispose(cancel)
 
-  return { term, results, loading, error, highlighted, update, clear, move }
+  return { term, results, loading, error, highlighted, update, clear, move, applyStock }
 }

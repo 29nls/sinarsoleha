@@ -165,7 +165,7 @@ Hasil: **22 passed, 0 failed, 1 skipped**.
 | DB-13 | Selesai | `alter default privileges` + revoke eksplisit |
 | DB-14 | Selesai | indeks entity/created_at/actor |
 | DB-15 | Selesai | `stock_movements.actor_id NOT NULL` |
-| DB-16 | Ditunda | Realtime Broadcast menunggu mutasi stok Fase 5 |
+| DB-16 | Selesai (kode) | trigger Broadcast `store:stock` + policy `realtime.messages`, migrasi `20261105100000`; 3 tes grup H; belum diterapkan ke preview |
 | DB-17 | Terdokumentasi | offboarding via `is_active = false` |
 
 ## 6. Apply ke Hosted

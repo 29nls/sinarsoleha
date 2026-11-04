@@ -16,6 +16,7 @@ Aplikasi point of sale berbasis web untuk toko perabotan rumah tangga. Nuxt 4 + 
 | 7 | Plugin opsional: printer, scanner, gateway QRIS, halaman pengaturan | **Selesai & diuji lokal** |
 | 8 | Keamanan & UAT | **Audit selesai; UAT hosted menunggu migrasi 5A** — lihat `docs/16-security-uat.md` |
 | 9 | Halaman pengguna, audit log, filter stok rendah, ekspor CSV | **Selesai & diuji lokal** — lihat `docs/17-users-audit.md` |
+| 10 | Realtime stok (POS-03, NFR-04, DB-16) | **Selesai di kode & diuji lokal; migrasi preview menunggu approval** — lihat `docs/18-realtime-stock.md` |
 
 Katalog produk dan UI kasir sudah aktif secara lokal. Mesin transaksi database (`complete_sale`, `void_sale`) selesai dan diuji lokal serta hosted; UI kasir memanggil RPC tersebut tanpa menulis stok langsung. Verifikasi hosted untuk konkurensi, idempotensi, void, dan pembayaran **lulus** pada Phase 4D (suite hosted 10/10, browser E2E 10/10, rekonsiliasi seimbang) — lihat `docs/10-transaction-release-validation.md`. Produksi belum diterapkan.
 
@@ -40,6 +41,8 @@ Phase 8 menutup dengan audit keamanan yang dapat diulang dan checklist UAT per p
 Phase 6 menambah halaman laporan owner-only: ringkasan harian dan rincian pendapatan per nota (`/reports`), penjualan per produk dari snapshot baris transaksi (`/reports/products`), serta exception data katalog dan transaksi legacy (`/reports/exceptions`). Tidak ada tabel agregat, RPC, atau migrasi baru — baris dibaca dengan RLS lalu diringkas di klien, dibatasi 5000 baris per periode dan ditandai bila terpotong. CSV dibuat di browser dengan BOM UTF-8. Margin/laba kotor tidak disajikan karena harga beli historis belum lengkap (PRD §5.5). Rincian ada di `docs/14-reports.md`.
 
 Phase 9 menambah dua halaman administrasi owner-only: `/users` untuk mengubah nama, peran, dan status aktif profil staf lewat RPC `admin_upsert_profile` (dengan peringatan owner aktif terakhir), dan `/audit` untuk membaca audit log append-only dengan filter aksi/entitas/tanggal. Email tidak ditampilkan karena `profiles` tidak menyimpannya dan `auth.users` tidak terbaca klien; halaman ini juga tidak membuat akun. Phase 9 sekaligus menutup dua sisa Phase 5C/6: filter “stok rendah” (`stok > 0 && stok ≤ batas`) yang dihitung di klien karena PostgREST tidak bisa membandingkan dua kolom, serta ekspor CSV satu halaman di inventaris, selisih stok, dan audit. Tidak ada migrasi baru — lihat `docs/17-users-audit.md`.
+
+Phase 10 menambahkan Realtime stok (POS-03, NFR-04, DB-16): trigger `after update of stock_on_hand, stock_version` mengirim Broadcast **private** ke topic `store:stock` dengan payload minimal `{product_id, sku, stock_on_hand, stock_version}`, dan policy `realtime.messages` membatasinya ke sesi `authenticated`. Di kasir, `useStockRealtime` memperbarui saldo di keranjang dan hasil pencarian tanpa muat ulang, menolak pesan dengan `stock_version` lama, serta refetch + resubscribe setelah reconnect. Checkout tetap memvalidasi stok di database. Produk berstok `NULL` dan update nama/harga tidak disiarkan. Migrasi `20261105100000_stock_broadcast.sql` **belum** diterapkan ke preview — lihat `docs/18-realtime-stock.md`.
 
 ## Menjalankan
 
@@ -105,4 +108,5 @@ types/          tipe database hasil generate
 - `docs/15-plugins-settings.md` — kontrak adapter, printer/scanner/QRIS, sanitasi konfigurasi publik, halaman pengaturan (Phase 7)
 - `docs/16-security-uat.md` — audit keamanan, model ancaman, matriks peran, checklist UAT (Phase 8)
 - `docs/17-users-audit.md` — halaman pengguna, audit log, filter stok rendah, ekspor CSV (Phase 9)
+- `docs/18-realtime-stock.md` — Broadcast stok private, version guard, reconnect, tes grup H (Phase 10)
 - `docs/PROGRESS.md` — log pengembangan

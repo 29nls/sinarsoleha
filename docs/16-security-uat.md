@@ -10,9 +10,9 @@ migrasi Phase 5A masih menunggu persetujuan eksplisit untuk preview
 
 | Perintah | Yang diperiksa |
 | --- | --- |
-| `npm run test:db` | 80 tes PostgreSQL lokal, termasuk grup I (hak akses, RLS, RPC, default privilege). |
+| `npm run test:db` | 83 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
 | `npm run build` lalu `npm run audit:bundle` | Output build tidak memuat service-role key, secret key Supabase, atau JWT `service_role`. |
-| `npm test` | 221 unit test klien (adapter, sanitasi konfigurasi, laporan, izin). |
+| `npm test` | 251 unit test klien (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok). |
 | `npm run test:hosted` | Auth/RLS/RPC nyata di preview (butuh `.env` dan akun uji). |
 | `npm run test:hosted:transactions` | Konkurensi, idempotensi, void, dan rekonsiliasi pembayaran di preview. |
 
@@ -26,7 +26,7 @@ menemukan temuan, dan sudah diuji dengan file bocor buatan.
 
 ### 2.1 Bundle klien
 
-- `npm run audit:bundle`: **0 temuan** pada 147 berkas (2,5 MB teks) di
+- `npm run audit:bundle`: **0 temuan** pada 151 berkas (2,5 MB teks) di
   `.output/public` dan `.output/server`.
 - Tidak ada source map publik, tidak ada `service_role`, tidak ada
   `SUPABASE_SERVICE_ROLE_KEY`, tidak ada JWT dengan claim `service_role`.
@@ -118,7 +118,7 @@ langkah dicatat: tanggal, akun, hasil, dan tangkapan layar bila gagal.
 ### 5.1 Persiapan
 
 - [ ] `npm run build` dan `npm run audit:bundle` bersih.
-- [ ] `npm run test:db` 80/80 dan `npm test` 221/221.
+- [ ] `npm run test:db` 83/83 dan `npm test` 251/251.
 - [ ] Migrasi 5A diterapkan ke preview **hanya** setelah
       `APPROVE PHASE 5A MIGRATION TO PREVIEW`.
 - [ ] Tiga akun uji aktif: owner, kasir, staf gudang; satu akun nonaktif.

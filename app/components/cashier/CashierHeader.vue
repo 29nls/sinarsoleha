@@ -4,6 +4,7 @@ defineProps<{
   roleLabel: string
   businessDateLabel: string
   online: boolean
+  stockLive: boolean
 }>()
 </script>
 
@@ -18,6 +19,9 @@ defineProps<{
     <div class="flex items-center gap-2 text-[11px]">
       <span :class="['tag', online ? 'tag-accent' : 'tag-danger']">
         {{ online ? 'Online' : 'Offline' }}
+      </span>
+      <span :class="['tag', stockLive ? 'tag-accent' : 'tag-warn']">
+        {{ stockLive ? 'Stok live' : 'Stok manual' }}
       </span>
       <span class="tag">F2 cari · F9 bayar · Ctrl+Enter simpan</span>
     </div>

@@ -32,3 +32,42 @@ as $$
     ''
   )::uuid;
 $$;
+
+-- Local-only Realtime shim. Hosted Supabase ships the realtime schema,
+-- realtime.send() and realtime.topic(); this records broadcasts so the stock
+-- trigger can be asserted without a websocket.
+create schema realtime;
+
+create table realtime.messages (
+  id bigint generated always as identity primary key,
+  topic text not null,
+  extension text not null default 'broadcast',
+  event text not null,
+  payload jsonb not null,
+  private boolean not null default true,
+  inserted_at timestamptz not null default now()
+);
+
+create or replace function realtime.send(
+  payload jsonb,
+  event text,
+  topic text,
+  private boolean default true
+)
+returns void
+language sql
+as $$
+  insert into realtime.messages (payload, event, topic, private)
+  values (payload, event, topic, private);
+$$;
+
+create or replace function realtime.topic()
+returns text
+language sql
+stable
+as $$
+  select coalesce(current_setting('realtime.topic', true), '');
+$$;
+
+grant usage on schema realtime to authenticated;
+grant select on realtime.messages to authenticated;

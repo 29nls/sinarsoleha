@@ -10,6 +10,7 @@ import type {
   PaymentMethod,
   ReceiptDetail,
 } from '../types/cashier'
+import type { StockBroadcast } from '../utils/stock'
 import {
   addToCart,
   buildCheckoutPayload,
@@ -37,6 +38,7 @@ export const useCashierStore = defineStore('cashier', () => {
   const selectedProductId = ref<string | null>(null)
   const idempotencyKey = ref(createId())
   const lastAttempt = ref<{ key: string; payload: CheckoutPayload } | null>(null)
+  const stockVersions = new Map<string, number>()
 
   const subtotalCents = computed(() => cartSubtotalCents(lines.value))
   const paidCents = computed(() => paymentsTotalCents(payments.value))
@@ -92,6 +94,11 @@ export const useCashierStore = defineStore('cashier', () => {
     const result = addToCart(lines.value, product, quantity)
     if (result.error) return result.error
     lines.value = result.lines
+    // Seed the guard with the version this row was read at, so a message that
+    // was already in flight before the search cannot overwrite it.
+    if (typeof product.stockVersion === 'number') {
+      stockVersions.set(product.id, product.stockVersion)
+    }
     selectedProductId.value = product.id
     syncSimplePayment()
     touch()
@@ -144,6 +151,11 @@ export const useCashierStore = defineStore('cashier', () => {
     lines.value = lines.value.map((line) => {
       const fresh = products.get(line.product.id)
       if (!fresh) return line
+      // The refetch is newer than every broadcast seen so far; remembering its
+      // version stops a late message from undoing the fresh read.
+      if (typeof fresh.stockVersion === 'number') {
+        stockVersions.set(fresh.id, fresh.stockVersion)
+      }
       // Refresh availability only. The cart keeps the price the cashier saw;
       // the database remains the authority and may return a different total.
       return {
@@ -155,6 +167,33 @@ export const useCashierStore = defineStore('cashier', () => {
         },
       }
     })
+  }
+
+  /**
+   * Applies one Realtime stock message (POS-03). Only the balance changes; the
+   * price stays as the cashier saw it and checkout still validates the
+   * database. An older or repeated `stock_version` is ignored so a delayed
+   * message cannot roll the display back.
+   */
+  function applyStockChange(event: StockBroadcast): boolean {
+    const known = stockVersions.get(event.productId)
+    if (known !== undefined && known >= event.stockVersion) return false
+    stockVersions.set(event.productId, event.stockVersion)
+
+    let changed = false
+    lines.value = lines.value.map((line) => {
+      if (line.product.id !== event.productId) return line
+      if (line.product.stockOnHand === event.stockOnHand) return line
+      changed = true
+      return { ...line, product: { ...line.product, stockOnHand: event.stockOnHand } }
+    })
+    return changed
+  }
+
+  /** The channel does not replay missed messages, so a refetch resets the
+   * version guard: the database read is newer than anything remembered. */
+  function resetStockVersions() {
+    stockVersions.clear()
   }
 
   function selectLine(productId: string | null) {
@@ -315,6 +354,8 @@ export const useCashierStore = defineStore('cashier', () => {
     removeLine,
     clearCart,
     replaceProductStock,
+    applyStockChange,
+    resetStockVersions,
     selectLine,
     setPaymentMode,
     setCashPayment,

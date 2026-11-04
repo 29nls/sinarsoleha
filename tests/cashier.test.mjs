@@ -332,6 +332,36 @@ describe('cashier store', () => {
     expect(store.canCheckout).toBe(false)
   })
 
+  it('applies a Realtime stock event once and ignores stale versions', () => {
+    const store = useCashierStore()
+    store.addProduct(product({ stockVersion: 4 }))
+
+    // A message older than the version read from the database is dropped.
+    expect(
+      store.applyStockChange({ productId: 'p1', sku: 'SKU-1', stockOnHand: 2, stockVersion: 4 }),
+    ).toBe(false)
+    expect(store.lines[0].product.stockOnHand).toBe(10)
+
+    expect(
+      store.applyStockChange({ productId: 'p1', sku: 'SKU-1', stockOnHand: 2, stockVersion: 5 }),
+    ).toBe(true)
+    expect(store.lines[0].product.stockOnHand).toBe(2)
+    expect(store.lines[0].product.salePrice).toBe(5000)
+
+    // Replays and late duplicates must not roll the number back.
+    expect(
+      store.applyStockChange({ productId: 'p1', sku: 'SKU-1', stockOnHand: 9, stockVersion: 5 }),
+    ).toBe(false)
+    expect(store.lines[0].product.stockOnHand).toBe(2)
+
+    // A refetch clears the guard so a newer database read is never blocked.
+    store.resetStockVersions()
+    expect(
+      store.applyStockChange({ productId: 'p1', sku: 'SKU-1', stockOnHand: 1, stockVersion: 5 }),
+    ).toBe(true)
+    expect(store.lines[0].product.stockOnHand).toBe(1)
+  })
+
   it('rejects over-stock edits and keeps the previous quantity', () => {
     const store = useCashierStore()
     store.addProduct(product())

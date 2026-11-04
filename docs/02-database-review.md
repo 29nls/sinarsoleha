@@ -83,7 +83,7 @@ Nilai bebas pada opname dan discrepancy; typo akan lolos.
 
 **DB-15. `stock_movements.actor_id` nullable.** Mutasi tanpa pelaku tidak dapat diaudit. Jadikan NOT NULL untuk movement baru; nilai NULL hanya diizinkan untuk backfill migrasi.
 
-**DB-16. Realtime belum ada.** Tambah trigger Broadcast `store:stock` setelah update `products.stock_on_hand`/`stock_version`, payload minimal.
+**DB-16. Realtime belum ada.** *Selesai di kode:* trigger `products_broadcast_stock` memanggil `realtime.send` ke topic `store:stock` (private) setelah update `products.stock_on_hand`/`stock_version`, payload `{product_id, sku, stock_on_hand, stock_version}`, plus policy `realtime.messages` untuk `authenticated`. Migrasi `20261105100000_stock_broadcast.sql` menunggu approval preview — lihat `docs/18-realtime-stock.md`.
 
 **DB-17. Delete user Auth gagal.** `profiles` direferensikan `on delete restrict` oleh transaksi. Offboarding harus `is_active=false`; dokumentasikan dan jangan sediakan tombol hapus user.
 

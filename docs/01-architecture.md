@@ -83,10 +83,14 @@ Penomoran tidak boleh dibuat di browser. RPC mengambil nomor dari tabel counter/
 
 Broadcast pada topic `store:stock`, payload `{ product_id, sku, stock_on_hand, stock_version }`.
 
+- Channel **private**; hanya sesi `authenticated` yang lolos policy `realtime.messages`.
 - Tidak memuat harga beli, pelanggan, atau pembayaran.
 - Pinia memperbarui saldo dan memperingatkan bila qty keranjang melebihi stok baru.
 - Reconnect → refetch saldo yang terlihat + resubscribe.
+- Pesan dengan `stock_version` lebih lama/sama diabaikan agar tampilan tidak mundur.
 - Checkout tetap memvalidasi stok di database; event realtime bukan otorisasi.
+
+Implementasi: `docs/18-realtime-stock.md`.
 
 ## 10. ADR-010 — Impor legacy lewat staging, tanpa auto-match
 

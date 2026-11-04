@@ -9,6 +9,8 @@ export interface CashierProduct {
   decimalScale: number
   salePrice: number | null
   stockOnHand: number | null
+  /** `products.stock_version`; used to drop out-of-order Realtime messages. */
+  stockVersion?: number
   isActive: boolean
 }
 

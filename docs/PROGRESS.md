@@ -875,3 +875,72 @@ approval untuk preview; produksi tidak disentuh.
 - Migrasi Phase 5A **masih menunggu approval** untuk preview
   `ptbllrugrjepdhdhhdkzxn`; UAT hosted, printer/scanner fisik, dan gateway QRIS
   dinamis tetap tidak tersedia di lingkungan ini.
+
+## 5 November 2026 — Phase 10 (Realtime stok, POS-03 / NFR-04 / DB-16)
+
+Menutup celah PRD terakhir yang belum punya kode: saldo stok antar-kasir kini
+tersinkron tanpa muat ulang. Realtime hanya untuk tampilan; checkout tetap
+memvalidasi stok di database.
+
+### Yang dibuat
+
+- `supabase/migrations/20261105100000_stock_broadcast.sql` —
+  `private.broadcast_product_stock()` (`security definer`, `search_path = ''`),
+  trigger `products_broadcast_stock` (`after update of stock_on_hand,
+  stock_version`), `realtime.send(..., 'stock_changed', 'store:stock', true)`,
+  dan policy `"stock topic readable by authenticated"` pada `realtime.messages`.
+- `app/utils/stock.ts` — `STOCK_TOPIC`, `STOCK_EVENT`, `parseStockBroadcast`,
+  `applyStockBroadcast`, `StockPatchable`.
+- `app/composables/useStockRealtime.ts` — channel private, status
+  `idle/connecting/subscribed/error`, `start/stop/reconnect`, resync setelah
+  subscribe kedua, `onScopeDispose`.
+- `tests/stock.test.ts` (8 tes).
+
+### File dimodifikasi
+
+| File | Perubahan |
+| --- | --- |
+| `app/types/cashier.ts` | `stockVersion?` pada `CashierProduct`. |
+| `app/services/cashier.ts` | `stock_version` masuk `PRODUCT_SELECT` dan `mapProduct`. |
+| `app/stores/cashier.ts` | Peta `stockVersions`, `applyStockChange`, `resetStockVersions`; versi disemai saat produk masuk keranjang dan saat refetch. |
+| `app/composables/useCashierSearch.ts` | `applyStock(event)` dengan pembanding versi baris. |
+| `app/pages/cashier/index.vue` | `useStockRealtime` + `refreshCartStock` sebagai resync, start/stop, `reconnect()` pada `online`. |
+| `app/components/cashier/CashierHeader.vue` | Prop `stockLive` + badge “Stok live”/“Stok manual”. |
+| `supabase/tests/local_bootstrap.sql` | Shim schema `realtime` (`messages`, `send`, `topic`) untuk PGlite. |
+| `scripts/db-test.mjs` | `runRealtimeTests()` H1–H3. |
+| `tests/cashier.test.mjs` | 1 tes store: versi lama ditolak, replay tidak mundur, reset membuka guard. |
+| `docs/01`, `docs/02`, `docs/03`, `docs/13`, `docs/16`, `README.md` | Status DB-16, ADR-009, angka tes, tautan `docs/18`. |
+
+### Keputusan
+
+- **Private broadcast, bukan publik.** Policy `realtime.messages` membatasi
+  topic ke `authenticated`; anon tidak bisa berlangganan meski tahu namanya.
+- **Payload minimal.** Empat kunci saja; tidak ada harga beli/pelanggan.
+- **Trigger selektif.** Update nama/harga dan produk berstok `NULL` tidak
+  disiarkan, sehingga 1.360 produk impor tidak membanjiri channel.
+- **Version guard.** `stock_version` yang lebih lama/sama diabaikan; refetch
+  me-reset guard karena hasil baca database selalu lebih baru.
+- **Migrasi aman di PGlite.** Guard `to_regprocedure(...)` dan
+  `to_regclass('realtime.messages')` membuat migrasi bisa diuji lokal tanpa
+  schema Realtime, tanpa melemahkan hosted.
+- **Tanpa Realtime di halaman inventaris.** Layar kasir yang butuh; halaman
+  baca tetap manual.
+
+### Verifikasi
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:db` | **83/83 lulus** (3 tes baru H1–H3) |
+| `npm test` | **251/251 lulus** (19 file; 9 tes baru) |
+| `npm run typecheck` | exit 0 |
+| `npm run build` | exit 0 (1,92 MB / 474 kB gzip) |
+| `npm run audit:bundle` | 151 berkas, **0 temuan** |
+
+### Batasan
+
+- Migrasi `20261105100000` **belum diterapkan ke preview**; butuh persetujuan
+  eksplisit seperti Phase 5A. Tanpa itu badge tetap “Stok manual”.
+- Uji dua browser pada hosted belum dijalankan; yang terverifikasi adalah
+  trigger/policy SQL dan logika klien.
+- Hanya saldo yang disinkronkan; nama/harga/status aktif baru terlihat setelah
+  pencarian ulang.
