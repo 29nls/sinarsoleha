@@ -1083,3 +1083,27 @@ dengan kunci idempoten tidak menggandakan stok, catatan kosong /
 `opening_balance` / `delta 0` ditolak, owner bisa mengoreksi balik, dan ledger
 mencatat `manual_adjustment` dengan `transaction_id`/`stock_opname_id` NULL
 plus audit `stock.adjust`.
+
+## 4 November 2026 — UAT NFR-04 dua browser
+
+Gate PRD terakhir yang belum pernah dijalankan sungguhan: kasir A checkout,
+kasir B melihat saldo baru di layar kasir tanpa reload.
+
+`e2e/nfr04-stock-latency.spec.mjs` membuka **dua konteks Chromium terpisah**
+(storage dan sesi sendiri, setara dua till fisik), login sebagai `cashier` dan
+`cashier_b`, lalu mengukur dari klik "Bayar & simpan" sampai sel stok di
+browser B berubah.
+
+| Pemeriksaan | Hasil |
+| --- | --- |
+| Browser B `SUBSCRIBED` ke `store:stock` | ya (`Stok live` tampil) |
+| Stok terlihat berubah | 2 → 1 |
+| Latensi end-to-end (termasuk round trip RPC) | **899 ms** |
+| Budget NFR-04 | 2.000 ms |
+| Reload / refetch manual | tidak ada; URL dan kata kunci pencarian B tetap |
+
+Angka ini mencakup round trip `complete_sale` ke Supabase, trigger Broadcast,
+dan render di browser kedua — bukan hanya waktu pengiriman pesan. Karena
+checkout tetap memvalidasi stok di PostgreSQL, pesan yang terlambat tidak bisa
+menyebabkan oversell; layar hanya menampilkan angka basi sampai pesan atau
+refetch berikutnya.

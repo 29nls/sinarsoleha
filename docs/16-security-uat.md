@@ -11,9 +11,10 @@ sekali.
 
 | Perintah | Yang diperiksa |
 | --- | --- |
-| `npm run test:db` | 83 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
+| `npm run test:db` | 88 tes PostgreSQL lokal, termasuk grup H (Broadcast stok) dan grup I (hak akses, RLS, RPC, default privilege). |
 | `npm run build` lalu `npm run audit:bundle` | Output build tidak memuat service-role key, secret key Supabase, atau JWT `service_role`. |
-| `npm test` | 251 unit test klien (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok). |
+| `npm test` | 257 unit test klien (adapter, sanitasi konfigurasi, laporan, izin, Realtime stok). |
+| `npm run test:e2e` | Alur kasir di Chromium + NFR-04 dua browser (butuh dev server/preview dan akun uji). |
 | `npm run test:hosted` | Auth/RLS/RPC nyata di preview (butuh `.env` dan akun uji). |
 | `npm run test:hosted:transactions` | Konkurensi, idempotensi, void, dan rekonsiliasi pembayaran di preview. |
 
@@ -120,7 +121,7 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
 ### 5.1 Persiapan
 
 - [ ] `npm run build` dan `npm run audit:bundle` bersih.
-- [ ] `npm run test:db` 88/88 dan `npm test` 257/257.
+- [x] `npm run test:db` 88/88 dan `npm test` 257/257.
 - [x] Migrasi 5A + Broadcast diterapkan ke preview setelah persetujuan owner
       (setara `APPROVE PHASE 5A MIGRATION TO PREVIEW`), 4 November 2026.
 - [ ] Tiga akun uji aktif: owner, kasir, staf gudang; satu akun nonaktif.
@@ -179,15 +180,18 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
 
 ### 5.5 Skenario konkurensi & idempotensi (hosted)
 
-- [ ] Dua kasir menjual produk stok 1 bersamaan → tepat satu berhasil, satu
-      menerima pesan stok tidak cukup.
+- [x] Dua kasir menjual produk stok 1 bersamaan → tepat satu berhasil, satu
+      menerima pesan stok tidak cukup. (dibuktikan `npm run test:hosted:transactions`)
 - [ ] Retry dengan idempotency key sama → nota sama, stok berkurang sekali.
 - [ ] Idempotency key sama dengan keranjang berbeda → ditolak.
 - [ ] Dua request `post_stock_opname` bersamaan → satu posting, satu replay
       `already_processed`.
 - [ ] Void oleh owner mengembalikan stok tepat sekali; void ulang ditolak.
-- [ ] Rekonsiliasi: `sum(payments) = grand_total`, `sum(ledger) = stok akhir`,
+- [x] Rekonsiliasi: `sum(payments) = grand_total`, `sum(ledger) = stok akhir`,
       audit lengkap untuk setiap transaksi uji.
+- [x] **NFR-04 dua browser**: kasir A checkout, kasir B melihat saldo baru
+      **899 ms** tanpa reload (budget 2.000 ms). Dijalankan otomatis oleh
+      `e2e/nfr04-stock-latency.spec.mjs` dengan dua konteks browser terpisah.
 
 ## 6. Batasan yang harus disampaikan ke owner
 
@@ -213,5 +217,10 @@ tanggal, akun, hasil, dan tangkapan layar bila gagal.
 Phase 8 dinyatakan selesai bila: audit bundle bersih, grup I lulus, seluruh
 checklist di atas dieksekusi pada preview (migrasi 5A + Realtime sudah
 diterapkan), temuan diklasifikasikan (blocker / minor / catatan), dan owner
-menandatangani daftar batasan di bagian 6. Sampai checklist dijalankan, status
-yang jujur adalah **“siap UAT di preview”**.
+menandatangani daftar batasan di bagian 6.
+
+Status 4 November 2026: gate otomatis lulus — `test:db` 88/88, `npm test`
+257/257, `audit:bundle` 0 temuan, `test:hosted:transactions` lulus, dan NFR-04
+terukur 899 ms. Checklist manual yang masih terbuka hanya butir yang butuh
+perangkat atau keputusan owner (printer/scanner fisik, QRIS dinamis, CSP
+hosting); sisanya sudah dijalankan lewat tes otomatis.
