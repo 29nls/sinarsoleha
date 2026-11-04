@@ -1772,5 +1772,16 @@ RPC benar-benar berjalan dengan `auth.uid()` terisi.
 
 ### Status
 
-Tahap 1 (repo) selesai. Tahap 2 (empat pertanyaan owner), Tahap 3 (gate Phase
-5F), dan Tahap 4 (produksi) belum dimulai.
+Tahap 1 (repo) selesai dan sudah di-commit (`2ae64c8`) serta di-push ke
+`origin/main`. Tahap 2 selesai: owner menjawab empat butir pada 4 November 2026.
+
+| Butir | Keputusan owner |
+| --- | --- |
+| a | Latihan opname kecil di preview dulu, baru hitung penuh di produksi |
+| b | Backup produksi pakai paket berbayar (backup harian otomatis), bukan dump terjadwal |
+| c | Ganti kata sandi lewat dashboard Supabase; tidak ada halaman in-app |
+| d | Isi nota tetap seperti sekarang |
+
+Keputusan b mengubah D1a: pilihan tertulis sudah ada, tetapi kriteria lulusnya
+belum — satu restore ke project uji masih harus dibuktikan sebelum D5. Tahap 3
+(gate Phase 5F) dan Tahap 4 (produksi) belum dimulai.

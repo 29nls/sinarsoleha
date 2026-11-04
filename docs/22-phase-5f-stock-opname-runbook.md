@@ -88,6 +88,13 @@ tampak bersih padahal tidak.
 Angka ini adalah pembanding, bukan target. Setelah posting, selisih yang sah
 hanya boleh muncul pada item yang memang dihitung berbeda.
 
+**Diverifikasi ulang 4 November 2026 17:21 UTC** (read-only, sesi pra-gate):
+1.409 / 1.361 produk, 1.374 stok `NULL`, 35 baris berstok dengan jumlah
+`stock_on_hand` 377 dan jumlah `stock_version` 76, 104 movement, 58 opname,
+2.802 item, 13 log selisih, 0 fixture `TEST-*`/`HOST-*` aktif. Semua angka
+sama dengan tabel di atas — baseline masih sah, tidak ada yang bergeser sejak
+impor 1.361 produk.
+
 ### Verifikasi staf B
 
 `npm run test:hosted:opname:staff-b` membaca kredensial staf B dari
@@ -209,10 +216,10 @@ Bila panel tidak muncul, jangan lanjut. Itu regresi, bukan keberhasilan.
 | Item | Status |
 | --- | --- |
 | Runbook | selesai — dokumen ini |
-| Migrasi 23/23 | selesai — diverifikasi ulang 4 November 2026 |
-| Fixture aktif | 0 — diverifikasi ulang |
-| Baseline §4.5 | selesai — lihat tabel di atas |
-| Regresi read-only | 11/11 lulus |
+| Migrasi 23/23 | selesai — `migration list --linked`, 23 baris local+remote, 4 November 2026 |
+| Fixture aktif | 0 — diverifikasi ulang 4 November 2026 |
+| Baseline §4.5 | selesai — lihat tabel di atas, dicocokkan ulang 17:21 UTC |
+| Regresi read-only | 11/11 lulus — `npm run test:hosted:opname`, exit 0 |
 | Verifikasi staf B | **8/8 lulus** — `npm run test:hosted:opname:staff-b`, exit 0 |
 | Staf B | **ada & aktif** — `phase5f.staffb@sinarsoleha.com`, `4ba5012e-7e53-4f85-892d-27524eb8071a` |
 | Gate Phase 5F | belum diminta — **satu-satunya blocker tersisa** |

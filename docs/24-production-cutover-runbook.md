@@ -3,7 +3,9 @@
 Status per 4 November 2026: **draf, belum dijalankan.** Tidak ada project
 produksi, tidak ada migrasi ke produksi, dan tidak ada kredensial produksi di
 mesin ini. Dokumen ini disiapkan supaya hari-H tidak berisi keputusan yang
-belum diambil.
+belum diambil. Empat keputusan owner sudah masuk (lihat `docs/23` §6.1): backup
+paket berbayar, latihan opname kecil di preview dulu, kata sandi lewat
+dashboard, isi nota tidak berubah.
 
 Pendamping: `docs/23` §5 (tahap D), `docs/22` (opname), `docs/16` §5 (UAT),
 `docs/17` (akun), `docs/03` §3 (bootstrap owner).
@@ -34,7 +36,7 @@ tanda tangan) dari apa yang bisa divalidasi agen.
 | # | Langkah | Pemilik | Perintah / tempat | Kriteria lulus |
 | --- | --- | --- | --- | --- |
 | D1 | Buat project Supabase produksi terpisah | **Owner** | dashboard Supabase → New project, region **Southeast Asia (Singapore)** sama dengan preview | project ref baru (20 huruf kecil), org sama, region sama |
-| D1a | Putuskan backup produksi | **Owner** | lihat §5 | satu pilihan tertulis: paket berbayar **atau** dump terjadwal; satu restore ke project uji sudah dibuktikan |
+| D1a | Backup produksi: **paket berbayar (dipilih 4 Nov 2026)** | **Owner** | lihat §5 | pilihan tertulis sudah ada; satu restore ke project uji masih harus dibuktikan |
 | D1b | Konfigurasi Vercel produksi | Teknis | lihat §4 | login produksi mendarat di domain produksi, bukan `127.0.0.1`/preview |
 | D2 | Terapkan 23 migrasi | Teknis | `npx supabase link --project-ref <ref-prod>` lalu `npx supabase db push` | `npx supabase migration list --linked` → 23/23 di kolom remote |
 | D3 | Buat akun owner produksi + tutup signup | **Owner** | dashboard → Authentication → Users → Add user; lihat §3 | 1 owner aktif, `activated_at` terisi, `POST /auth/v1/signup` → `422 signup_disabled` |
@@ -80,7 +82,7 @@ kredensial.
 
 Catatan biaya: paket ditentukan di **tingkat organisasi**, bukan per project —
 organisasi yang sudah berbayar otomatis memberi backup harian dan bebas jeda
-pada semua project di dalamnya. Kalau memilih Pilihan A di §5.2, biayanya
+pada semua project di dalamnya. Karena Pilihan A di §5.2 sudah dipilih, biayanya
 menambah project kedua (~$10/bulan di luar kredit compute), bukan menggandakan
 paket Pro.
 
@@ -240,6 +242,11 @@ dimaksud lewat dashboard, atau pakai config minimal yang hanya memuat blok
 
 ## 5. D1a — Keputusan backup (wajib sebelum D5)
 
+**Keputusan owner, 4 November 2026: Pilihan A — paket berbayar dengan backup
+harian otomatis.** Tidak ada dump logis terjadwal sebagai jalur utama. Pilihan
+ini mengikat: D1 harus dibuat di organisasi yang sudah berbayar, dan D5 tidak
+boleh dimulai sebelum satu restore ke project uji terbukti (§5.4).
+
 Ini keputusan **biaya**, jadi milik owner. Agen hanya menyajikan pilihan dan
 cara membuktikannya.
 
@@ -258,12 +265,11 @@ menghasilkan file kosong dengan exit 0 — skrip cadangan yang "selalu sukses"
 tetapi tidak pernah bisa direstore. Karena itu aturan berikut tidak bisa
 ditawar:
 
-> Setiap dump wajib dicek ukurannya (`-s` > 0, dan jumlah baris `COPY` wajar),
-> **dan** satu kali restore ke project uji harus dibuktikan sebelum D5.
+> Setiap backup — otomatis maupun dump — wajib dibuktikan dengan satu restore
+> ke project uji sebelum D5. Backup yang belum pernah direstore bukan backup;
+> itu hanya file (atau baris di dashboard).
 
-Backup yang belum pernah direstore bukan backup; itu hanya file.
-
-### 5.2 Pilihan A — paket berbayar (backup harian otomatis)
+### 5.2 Pilihan A — paket berbayar (backup harian otomatis) — **DIPILIH**
 
 - Backup harian otomatis, retensi 7 hari pada Pro (14 hari Team, 30 hari
   Enterprise). PITR adalah add-on terpisah dan butuh compute minimal Small;
@@ -277,11 +283,13 @@ Backup yang belum pernah direstore bukan backup; itu hanya file.
   aplikasi ini tidak masalah karena tidak ada foto produk di Storage.
 
 Cocok bila toko buta terhadap operasi database dan ingin satu tombol pulih.
+Itu kondisi toko ini, jadi inilah yang dipilih owner.
 
-### 5.3 Pilihan B — dump logis terjadwal (tanpa biaya paket)
+### 5.3 Pilihan B — dump logis terjadwal (tanpa biaya paket) — tidak dipakai
 
-Butuh mesin yang punya Docker **atau** `pg_dump` versi yang cocok, plus
-penyimpanan di luar project.
+Disimpan sebagai rujukan bila keputusan backup ditinjau ulang. Butuh mesin yang
+punya Docker **atau** `pg_dump` versi yang cocok, plus penyimpanan di luar
+project.
 
 ```bash
 # Contoh: jalankan di mesin ber-Docker, JANGAN di mesin tanpa Docker.
@@ -294,17 +302,19 @@ Wajib: jadwalkan harian, simpan di luar project Supabase, rotasi, dan **uji
 restore sebulan sekali** ke project uji. Tanpa uji restore, pilihan ini hanya
 memberi rasa aman palsu.
 
-### 5.4 Yang harus diputuskan owner
+### 5.4 Yang sudah diputuskan owner
 
-1. Pilihan A atau B (atau A **dan** B untuk data penjualan yang tidak boleh
-   hilang sehari).
-2. Kalau B: mesin mana yang menjalankan dump, dan di mana file disimpan.
-3. Kalau A: konfirmasi bahwa biaya bulanan disetujui.
+1. **Pilihan A** — paket berbayar (Pro), backup harian otomatis 7 hari, project
+   tidak dijeda karena sepi. Pilihan B (dump logis terjadwal) **tidak** dipakai.
+2. Mesin dump tidak perlu disiapkan; tidak ada jadwal dump yang harus dijaga.
+3. Biaya bulanan disetujui owner (paket per-organisasi; project kedua menambah
+   biaya project, bukan menggandakan paket).
 
-Kriteria lulus D1a: pilihan tertulis di `docs/PROGRESS.md`, **dan** satu restore
+Yang **belum** selesai dan tetap wajib: satu restore ke project uji. Kriteria
+lulus D1a: pilihan tertulis di `docs/PROGRESS.md` (sudah), **dan** satu restore
 ke project uji berhasil dengan jumlah baris yang cocok. Tanpa itu, D5 belum
 boleh dimulai — mengisi saldo hasil hitungan fisik ke database tanpa backup
-berarti mengulang 3–5 hari kerja bila terjadi kegagalan.
+terbukti berarti mengulang 3–5 hari kerja bila terjadi kegagalan.
 
 ### 5.5 Jebakan paket gratis
 
@@ -549,11 +559,11 @@ baris hasil hitungan tanpa backup adalah risiko yang tidak perlu diambil.
 
 ## 8. Ganti dan lupa kata sandi
 
-Aplikasi ini **tidak punya** halaman ganti kata sandi. Itu keputusan sadar,
-bukan kelalaian: menambah alur reset di aplikasi berarti menambah permukaan
-serangan (token reset, tautan email, halaman publik) pada aplikasi yang dipakai
-di belakang meja kasir. Selama keputusan itu belum diubah owner (Tahap 2 butir
-c), prosedur di bawah adalah satu-satunya jalur.
+Aplikasi ini **tidak punya** halaman ganti kata sandi, dan owner memutuskan
+(4 November 2026) untuk **tetap begitu**. Itu keputusan sadar, bukan kelalaian:
+menambah alur reset di aplikasi berarti menambah permukaan serangan (token
+reset, tautan email, halaman publik) pada aplikasi yang dipakai di belakang
+meja kasir. Prosedur di bawah adalah satu-satunya jalur.
 
 ### 8.1 Owner mengganti kata sandi staf
 
@@ -618,7 +628,8 @@ sebelum jam buka toko dan tandai transaksinya agar bisa dikenali.
 ## 10. Checklist ringkas (cetak dan centang)
 
 - [ ] D1 project produksi dibuat, region Singapore, ref dicatat
-- [ ] D1a pilihan backup tertulis + satu restore ke project uji terbukti
+- [x] D1a pilihan backup tertulis (paket berbayar, 4 November 2026)
+- [ ] D1a satu restore ke project uji terbukti
 - [ ] D1b env Vercel produksi terpasang **sebelum** build
 - [ ] D1b Site URL + Redirect URLs menunjuk domain produksi
 - [ ] D1b HSTS `includeSubDomains` hanya setelah domain sendiri ada

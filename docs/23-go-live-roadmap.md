@@ -231,6 +231,17 @@ C1 → C2 → C3 → C4 → C5 ───┘
 A harus selesai sebelum B (mekanisme belum terbukti). B dan C berjalan
 bersamaan. D menunggu B dan C selesai.
 
+### 6.1 Empat keputusan owner (4 November 2026)
+
+Tahap 2 terjawab; butir di bawah tidak perlu ditanyakan lagi.
+
+| Butir | Keputusan | Akibat |
+| --- | --- | --- |
+| a | Latihan opname **kecil di preview dulu**, lalu hitung penuh di produksi | A2 dikerjakan di Tahap 3 sebagai latihan ~20 produk; D5 tetap hitungan fisik penuh |
+| b | Backup produksi = **paket berbayar** dengan backup harian otomatis | D1 dibuat di organisasi berbayar; D1a masih menunggu satu restore ke project uji |
+| c | Ganti kata sandi **lewat dashboard**, tanpa halaman in-app | Tidak ada kode baru; `docs/24` §8 berlaku |
+| d | Isi nota **tetap seperti sekarang** (tanpa alamat/telepon/footer) | Tidak ada perubahan `ReceiptView.vue` |
+
 ## 7. Yang tidak termasuk
 
 Sengaja tidak dimasukkan karena bukan syarat go-live:
