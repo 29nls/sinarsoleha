@@ -182,7 +182,8 @@ nol.
 Audit ulang Phase 5E.1 pada 4 November 2026 09:48 UTC mengembalikan 48 produk
 yang sama, 8 aktif, dan klasifikasi yang sama (A=0, B=13, C=3, D=32). Tidak ada
 penghapusan. Rencana hanya menonaktifkan 8 produk aktif dan membiarkan seluruh
-riwayat apa adanya.
+riwayat apa adanya. Migrasi 0021–0023 sudah diterapkan; itu tidak mengubah satu
+pun fixture, dan pengarsipan tetap menunggu gate terpisah.
 
 ### 7.1 Metode: RPC owner, bukan UPDATE langsung
 

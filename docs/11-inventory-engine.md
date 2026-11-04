@@ -7,7 +7,7 @@ menulis `products.stock_on_hand`.
 
 - Migrasi: `supabase/migrations/20261104100000_stock_opname_engine.sql`
 - Tes: `scripts/db-test.mjs` (grup A–J), `npm run test:db`
-- Status: **lokal lulus 101/101; mesin 5A/5D terpasang di preview (20/20 migrasi); tiga RPC baca Phase 5E belum diterapkan**
+- Status: **lokal lulus 101/101; mesin 5A/5D dan tiga RPC baca Phase 5E terpasang di preview (23/23); regresi hosted read-only 11/11**
 
 ## 1. Prinsip arsitektur
 
@@ -257,8 +257,9 @@ Phase 5E menambahkan tiga RPC baca (`get_stock_opname_summary`,
 `list_stock_opname_items`, `get_stock_opname_item_context`) yang menutup batas
 1.000 baris PostgREST dan snapshot recount yang basi. Ketiganya `SECURITY
 INVOKER` dengan `search_path = ''`, otorisasi lewat `private.has_role`, dan
-`EXECUTE` hanya untuk `authenticated`. Migrasinya **belum diterapkan** ke
-preview; angka di paragraf sebelumnya adalah perilaku 5D.
+`EXECUTE` hanya untuk `authenticated`. Ketiganya sudah diterapkan ke preview
+pada 4 November 2026 dan diuji read-only 11/11 (lihat `docs/21-phase-5e-hosted-readiness.md`);
+angka di paragraf sebelumnya tetap menjadi bukti baseline 5D.
 
 Tes memakai produk sintetis `OPN-*` dan fixture `TEST-TXN-*`; **tidak ada**
 stok 1.360 produk impor yang diubah dan tidak ada saldo awal nyata yang

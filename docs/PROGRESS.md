@@ -1251,8 +1251,8 @@ Tidak ada perubahan pada produksi; seluruh operasi hanya pada preview `ptbllrugr
   yang basi, dan akumulasi fixture preview.
 - Menyiapkan aplikasi untuk stok opname fisik nyata tanpa membuat sesi nyata,
   tanpa mengisi jumlah fisik, dan tanpa memposting saldo awal.
-- Tiga migrasi baru (**0021–0023**) ditulis dan diuji lokal, **belum diterapkan
-  ke preview maupun produksi**.
+- Tiga migrasi baru (**0021–0023**) ditulis dan diuji lokal, lalu diterapkan
+  ke preview lewat Phase 5E.1; produksi belum.
 
 ### File dibuat
 
@@ -1361,18 +1361,18 @@ diterapkan ke mana pun.
 
 ### Status
 
-Phase 5E selesai untuk lingkup lokal. Tiga migrasi menunggu penerapan preview,
-cleanup fixture menunggu approval eksplisit, dan akun staf kedua menunggu
+Phase 5E selesai dan tiga migrasinya sudah diterapkan ke preview lewat 5E.1.
+Cleanup fixture menunggu approval eksplisit, dan akun staf kedua menunggu
 pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.
 
-## 4 November 2026 — Phase 5E.1 (kesiapan hosted, menunggu approval)
+## 4 November 2026 — Phase 5E.1 (hosted deployed, read-only verified)
 
 ### Lingkup
 
-- Audit read-only dan dry-run deployment untuk tiga migrasi 5E.
-- Tidak ada migrasi diterapkan, tidak ada fixture diarsipkan, tidak ada stok
-  atau saldo awal yang dibuat.
-- Dua gate approval terpisah: migrasi dan pengarsipan.
+- Audit read-only, dry-run, dan deployment tiga migrasi 5E ke preview.
+- Regresi hosted read-only 11/11 pada sesi 1.361 item; tidak ada fixture
+  diarsipkan dan tidak ada stok atau saldo awal yang dibuat.
+- Gate pengarsipan tetap terpisah.
 
 ### Bukti remote dan dry-run
 
@@ -1380,11 +1380,19 @@ pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.
 | --- | --- |
 | Project | `ptbllrugrjepdhhdkzxn` (preview; org `veqlhnjvckdsflpoefsu`) |
 | CLI | `npx supabase` 2.122.0 |
-| Riwayat remote | 20/20 sampai `20261106130000` |
+| Riwayat remote sebelum push | 20/20 sampai `20261106130000` |
 | Riwayat lokal | 23 |
 | `db push --dry-run` | tepat `20261106140000`, `20261106140100`, `20261106140200` |
-| Probe RPC 5E | ketiganya `PGRST202` (belum ada) |
-| `npm run gen:types` | keluaran identik dengan tipe yang di-commit |
+| Probe RPC 5E sebelum push | ketiganya `PGRST202` (belum ada) |
+| `gen types --linked` | 49.112 byte; typecheck/test/build lulus |
+
+### Hasil deployment
+
+| Langkah | Hasil |
+| --- | --- |
+| `db push --linked --yes` | tiga migrasi applied, exit 0 |
+| `migration list --linked` | **23/23** |
+| Probe RPC sesudah push | summary/list OK; context `22023` untuk item null |
 
 ### Bukti read-only preview
 
@@ -1403,15 +1411,28 @@ pembuatan oleh owner. Tidak ada stok, transaksi, atau saldo awal yang diubah.
 | `npm run test:db` | **101/101** |
 | `npm test` | **275/275** (20 berkas) |
 | `npm run typecheck` | exit 0 |
-| `npm run build` | exit 0 (22,5 detik pada run 5E.1) |
+| `npm run build` | exit 0 (14,0 detik) |
 | `npm run audit:bundle` | 0 temuan (151 berkas, 2.581,2 kB) |
+
+### Verifikasi hosted
+
+| Perintah | Hasil |
+| --- | --- |
+| `npm run test:hosted:opname` | **11/11** (read-only) |
+| `npm run test:hosted:inventory` | belum dijalankan — suite menulis fixture/posting |
+| `npm run test:e2e:inventory` | belum dijalankan — alasan sama |
 
 ### Gate
 
+Gate migrasi sudah dijalankan dengan frasa persis. Gate yang masih terbuka:
+
 ```
-APPROVE PHASE 5E MIGRATIONS TO PREVIEW
 APPROVE ARCHIVE 8 ACTIVE PREVIEW FIXTURES
 ```
 
 Tidak ada gate yang boleh disimpulkan dari gate lainnya. Detail lengkap ada di
 `docs/21-phase-5e-hosted-readiness.md`.
+
+**Status: Phase 5E.1 selesai untuk deployment dan regresi read-only.
+Pengarsipan fixture dan staf B tetap terbuka; tidak ada data operasional yang
+diubah.**

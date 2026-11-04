@@ -21,7 +21,7 @@ ditemukan saat audit, plus suite uji hosted dan E2E browser.
 | Bundle | `npm run audit:bundle` | 0 temuan pada 151 berkas / 2.573 kB |
 | Hosted API | `npm run test:hosted:inventory` | **24/24 lulus** |
 | Browser E2E | `npm run test:e2e:inventory` | **17/17 lulus** |
-| Riwayat migrasi | `migration list --linked` | **20/20 sinkron** |
+| Riwayat migrasi | `migration list --linked` | **23/23** (20/20 saat 5D; 0021–0023 menyusul di 5E.1) |
 
 ## 2. Audit read-only sebelum eksekusi
 
@@ -141,10 +141,10 @@ ada movement, log selisih, atau audit yang dihapus — ledger tetap append-only.
 
 ## 7. Temuan yang belum diperbaiki
 
-> **Status per Phase 5E (4 November 2026):** butir 1, 2, dan 5 sudah ditangani
-> di kode dan diuji lokal. Tiga migrasi baru (0021–0023) **belum diterapkan ke
-> preview**, jadi perilaku hosted di bawah ini masih yang berlaku sampai migrasi
-> dijalankan. Butir 3 dan 4 tetap terbuka.
+> **Status per Phase 5E.1 (4 November 2026):** butir 1 dan 2 sudah diperbaiki
+> dan tiga migrasi 0021–0023 sudah diterapkan ke preview; regresi read-only
+> 11/11 lulus. Butir 5 (pengarsipan fixture) masih menunggu approval terpisah.
+> Butir 3 dan 4 tetap terbuka.
 
 1. ~~**Pembacaan detail terpotong 1.000 baris.**~~ **Diperbaiki di 5E.** Detail
    tidak lagi memuat item; header dan counter berasal dari

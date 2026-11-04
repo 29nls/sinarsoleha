@@ -1,9 +1,10 @@
 import type { Database as GeneratedDatabase } from '../../types/database.generated'
 
 /**
- * Generated from the migrated schema with `npm run gen:types`
- * (Supabase CLI over the local PGlite PostgreSQL). Regenerate after any
- * migration change; never edit types/database.generated.ts by hand.
+ * Generated from the migrated schema with
+ * `npx supabase gen types typescript --linked` after the 23 migrations.
+ * `npm run gen:types` reproduces the same schema offline via PGlite.
+ * Never edit types/database.generated.ts by hand.
  */
 export type Database = GeneratedDatabase
 
